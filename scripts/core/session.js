@@ -23,7 +23,7 @@
  */
 
 import {MODULE_ID, t} from "./constants.js";
-import {creditsFor, debit, totalCredits} from "./ledger.js";
+import {creditsFor, debit, getCredits, totalCredits, writeCredits} from "./ledger.js";
 import {autoClose, chatCardMode, gmNeedsCredit, spinDuration, wheelSpeaker} from "./settings.js";
 import {effectiveWeights, isUnweighted, pickEntry, slicesOf, totalWeight} from "./odds.js";
 import {recordGrant} from "./undo.js";
@@ -141,27 +141,61 @@ export async function requestSpin(sessionId) {
 
   if (!isGM) await debit(caller);
 
-  const slice = await rollSlice(session);
-  if (slice == null) {
-    session.phase = "idle";
-    session.currentSpinnerId = null;
+  // Everything from here has already taken the player's credit, so any failure
+  // has to give it back and return the wheel to a spinnable state. Leaving the
+  // phase claimed would kill the wheel for the rest of the session, and the
+  // only way out would be for the GM to close it and start again.
+  try {
+    const slice = await rollSlice(session);
+    if (slice == null) throw new Error("the roll produced no slice");
+
+    session.slice = slice;
+    session.entry = session.entries[session.layout[slice]];
+
+    await socket().executeForEveryone("playSpin", {
+      sessionId,
+      slice,
+      durationMs: session.wheel?.rules?.spinMs ?? spinDuration(),
+      spinnerId: caller,
+      spinnerName: user.name,
+      actorName: session.currentActorName,
+      actorId: actor?.id ?? null,
+      hasActor: !!actor
+    });
+  } catch (err) {
+    console.error("Wheel of Loot | the spin failed after the credit was spent", err);
+    await releaseSpin(session, {refund: !isGM ? caller : null});
     ui.notifications.error(t("Notify.RollFailed"));
-    return;
+    await tell(caller, t("Notify.SpinRefunded"));
   }
+}
 
-  session.slice = slice;
-  session.entry = session.entries[session.layout[slice]];
-
-  await socket().executeForEveryone("playSpin", {
-    sessionId,
-    slice,
-    durationMs: session.wheel?.rules?.spinMs ?? spinDuration(),
-    spinnerId: caller,
-    spinnerName: user.name,
-    actorName: session.currentActorName,
-    actorId: actor?.id ?? null,
-    hasActor: !!actor
-  });
+/**
+ * Put a session back to a spinnable state, optionally giving a credit back.
+ *
+ * The phase is the wheel's lock. Anything that claims it must be able to give
+ * it up again on every path, or one failed spin ends the ceremony.
+ *
+ * @param {object} session
+ * @param {object} [options]
+ * @param {?string} [options.refund]  User to hand a spin back to.
+ */
+async function releaseSpin(session, {refund = null} = {}) {
+  session.phase = "idle";
+  session.slice = null;
+  session.entry = null;
+  session.currentSpinnerId = null;
+  session.currentActorId = null;
+  session.currentActorName = null;
+  session.giftedTo = null;
+  if (!refund) return;
+  try {
+    const map = getCredits();
+    map[refund] = (Number(map[refund]) || 0) + 1;
+    await writeCredits(map);
+  } catch (err) {
+    console.error("Wheel of Loot | could not refund the spin", err);
+  }
 }
 
 /* -------------------------------------------- */
@@ -296,6 +330,8 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
   // Remember what changed hands, so a GM can take it back if it was a mistake.
   if (accepted && (granted || coins)) {
     session.grantAt = Date.now();
+    // Bookkeeping must never cost the player their prize, which they already
+    // have by this point; the worst case here is that undo is unavailable.
     await recordGrant({
       actorId: actor.id,
       itemId: granted?.id ?? null,
@@ -308,16 +344,16 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
     });
   }
 
-  await postResultCard(session, accepted, granted, coins);
+  // The prize has already changed hands, so a failure to *announce* it must not
+  // strand the wheel in the resolving phase. Report and carry on.
+  try {
+    await postResultCard(session, accepted, granted, coins);
+  } catch (err) {
+    console.error("Wheel of Loot | could not post the result card", err);
+  }
 
   // Re-arm for whoever still holds credits; close once the wheel is spent.
-  session.phase = "idle";
-  session.slice = null;
-  session.entry = null;
-  session.currentSpinnerId = null;
-  session.currentActorId = null;
-  session.currentActorName = null;
-  session.giftedTo = null;
+  await releaseSpin(session);
 
   if (totalCredits() > 0 || !(session.wheel?.rules?.autoClose ?? autoClose())) {
     await socket().executeForEveryone("rearmWheel", sessionId);
@@ -341,7 +377,12 @@ async function postResultCard(session, accepted, granted, coins) {
   const gift = session.giftedTo
     ? ` <span class="wol-card-gift">${t("Card.GiftedBy", {name: esc(spinner)})}</span>`
     : "";
-  const link = granted ? granted.link : (entry.uuid ? `@UUID[${entry.uuid}]{${entry.name}}` : entry.name);
+  // An item's name and image are author-controlled text that ends up in a chat
+  // card every player sees. A stray quote breaks the markup; a crafted one does
+  // worse. Neither goes in raw.
+  const link = granted
+    ? granted.link
+    : (entry.uuid ? `@UUID[${entry.uuid}]{${esc(entry.name)}}` : esc(entry.name));
 
   let verdict;
   if (!accepted) {
@@ -364,7 +405,7 @@ async function postResultCard(session, accepted, granted, coins) {
       <div class="wol-card">
         <h3><i class="fa-solid fa-arrows-spin"></i> ${esc(session.tableName)}</h3>
         <div class="wol-card-body">
-          <img src="${entry.img}" alt="">
+          <img src="${esc(entry.img ?? "")}" alt="">
           <div>
             <p class="wol-card-prize">${link}</p>
             <p class="wol-card-roll">${t("Card.Roll", {

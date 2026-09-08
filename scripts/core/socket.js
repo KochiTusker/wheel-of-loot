@@ -31,6 +31,12 @@ export function socketReady() {
  * @returns {Promise<any>}
  */
 export async function callOwner(handler, ...args) {
+  // Reached before socketlib.ready, or with socketlib disabled: say so rather
+  // than throwing a TypeError out of a click handler.
+  if (!_socket) {
+    ui.notifications.error(game.i18n.localize("WHEELOFLOOT.Notify.NoSocketlib"));
+    return null;
+  }
   const owner = game.users.activeGM;
   if (!owner) {
     ui.notifications.error(game.i18n.localize("WHEELOFLOOT.Notify.NoGM"));
@@ -43,7 +49,7 @@ export async function callOwner(handler, ...args) {
 
 /** Warn one user, whether they are this client or a remote one. */
 export async function tell(userId, message) {
-  if (userId === game.user.id) {
+  if (!_socket || userId === game.user.id) {
     ui.notifications.warn(message);
     return;
   }

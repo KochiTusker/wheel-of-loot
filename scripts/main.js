@@ -37,12 +37,37 @@ function openWheel(config) {
   });
 }
 
+/**
+ * Only a GM may drive what appears on everybody's screen.
+ *
+ * socketlib places no restriction on who may call `executeForEveryone`, so
+ * without this any player could open a fake wheel on every client, land it
+ * wherever they liked, or spam notifications at the table. None of it would
+ * grant an item — the GM still owns every mutation — but it is a table-wide
+ * nuisance, and "cannot actually steal anything" is not a reason to allow it.
+ *
+ * Declared with `function` rather than arrow syntax so socketlib can bind the
+ * sender's id, which is stamped by the server and not forgeable.
+ *
+ * @param {Function} handler
+ */
+function gmOnly(handler) {
+  return function (...args) {
+    const caller = this?.socketdata?.userId ?? game.user.id;
+    if (!game.users.get(caller)?.isGM) {
+      console.warn(`Wheel of Loot | ignored a broadcast from non-GM ${caller}`);
+      return;
+    }
+    return handler.apply(this, args);
+  };
+}
+
 const clientHandlers = {
-  openWheel,
-  playSpin: payload => LootWheel.spinTo(payload),
-  rearmWheel: sessionId => LootWheel.rearm(sessionId),
-  closeWheel: sessionId => LootWheel.dismiss(sessionId),
-  notify: message => ui.notifications.warn(message)
+  openWheel: gmOnly(openWheel),
+  playSpin: gmOnly(payload => LootWheel.spinTo(payload)),
+  rearmWheel: gmOnly(sessionId => LootWheel.rearm(sessionId)),
+  closeWheel: gmOnly(sessionId => LootWheel.dismiss(sessionId)),
+  notify: gmOnly(message => ui.notifications.warn(message))
 };
 
 /* -------------------------------------------- */
@@ -63,6 +88,11 @@ const clientHandlers = {
 export async function present({table, allocations} = {}) {
   if (!game.user.isGM) {
     ui.notifications.warn(t("Notify.GMOnly"));
+    return null;
+  }
+  // A wheel is a broadcast; without the socket there is nothing to broadcast to.
+  if (!socketReady()) {
+    ui.notifications.error(t("Notify.NoSocketlib"));
     return null;
   }
 

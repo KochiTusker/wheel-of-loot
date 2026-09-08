@@ -521,7 +521,7 @@ export class WheelBuilder extends ApplicationV2 {
       const use = USE_LABEL[c.profile];
       return `
       <li class="wol-b-row" draggable="true" data-uuid="${c.uuid}">
-        <img src="${c.img || "icons/svg/item-bag.svg"}" alt="">
+        <img src="${foundry.utils.escapeHTML(c.img || "icons/svg/item-bag.svg")}" alt="">
         <span class="nm">${foundry.utils.escapeHTML(c.name)}</span>
         <span class="src" data-tooltip="${foundry.utils.escapeHTML(c.packLabel)}">${
           foundry.utils.escapeHTML(c.source || "—")}</span>
@@ -584,7 +584,7 @@ export class WheelBuilder extends ApplicationV2 {
       return `
       <li class="wol-b-row entry${e.isCoin ? " coin" : ""}${e.missing ? " missing" : ""}${clash ? " clash" : ""}"
         data-index="${i}">
-        <img src="${e.img || "icons/svg/item-bag.svg"}" alt="">
+        <img src="${foundry.utils.escapeHTML(e.img || "icons/svg/item-bag.svg")}" alt="">
         <span class="nm">${e.missing ? `<i class="fa-solid fa-triangle-exclamation" data-tooltip="${
           t("Builder.MissingItem")}"></i> ` : ""}${clash ? `<i class="fa-solid fa-clone" data-tooltip="${
           t("Builder.NameClash")}"></i> ` : ""}${foundry.utils.escapeHTML(e.name)}</span>
@@ -1042,7 +1042,7 @@ export class WheelBuilder extends ApplicationV2 {
         <ol>
           ${row.group.map(g => `
             <li class="wol-b-row">
-              <img src="${g.img || "icons/svg/item-bag.svg"}" alt="">
+              <img src="${foundry.utils.escapeHTML(g.img || "icons/svg/item-bag.svg")}" alt="">
               <span class="nm">${foundry.utils.escapeHTML(g.source || t("Builder.NoSource"))}</span>
               <span class="src" data-tooltip="${foundry.utils.escapeHTML(g.packLabel)}">${
                 foundry.utils.escapeHTML(g.packLabel)}</span>

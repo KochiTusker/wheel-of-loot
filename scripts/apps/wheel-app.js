@@ -251,6 +251,10 @@ export class LootWheel {
   resetToIdle() {
     this.stopConfetti?.();
     this.stopConfetti = null;
+    // A re-arm can arrive while a landing is still pending if the GM resolved
+    // early; that callback must not fire into the next spinner's turn.
+    if (this.landTimer) window.clearTimeout(this.landTimer);
+    this.landTimer = null;
     this.state = "idle";
     this.landed = null;
     this.spinnerId = null;
@@ -270,6 +274,11 @@ export class LootWheel {
   destroy() {
     this.stopConfetti?.();
     this.stopTicks?.();
+    // The landing callback is scheduled for the end of the spin. A wheel closed
+    // mid-spin would otherwise still fire it, against a detached DOM.
+    if (this.landTimer) window.clearTimeout(this.landTimer);
+    this.landTimer = null;
+    this.state = "closed";
     this.root?.remove();
     if (LootWheel.current === this) LootWheel.current = null;
   }
@@ -502,7 +511,7 @@ export class LootWheel {
     if (reduceMotion()) {
       rotor.style.transition = "none";
       rotor.style.transform = `rotate(${final.toFixed(3)}deg)`;
-      window.setTimeout(() => this.#onLanded(), 400);
+      this.landTimer = window.setTimeout(() => this.#onLanded(), 400);
       return;
     }
 
@@ -526,7 +535,7 @@ export class LootWheel {
     void rotor.getBoundingClientRect();
     rotor.style.transform = `rotate(${final.toFixed(3)}deg)`;
 
-    window.setTimeout(() => this.#onLanded(), this.duration + 60);
+    this.landTimer = window.setTimeout(() => this.#onLanded(), this.duration + 60);
   }
 
   /** Deterministic 0–1 from the slice, so every client jitters identically. */

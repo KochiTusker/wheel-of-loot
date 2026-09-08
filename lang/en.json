@@ -177,6 +177,7 @@
   "WHEELOFLOOT.Notify.SaveFailed": "Could not save the table. See the console.",
   "WHEELOFLOOT.Notify.Saved": "\"{name}\" saved — {wedges} wedges over {slots} slots.",
   "WHEELOFLOOT.Notify.SpinFailed": "The wheel could not be spun. Ask your GM to check the console.",
+  "WHEELOFLOOT.Notify.SpinRefunded": "Something went wrong with that spin, so it has been given back to you.",
   "WHEELOFLOOT.Notify.TableNotFound": "Wheel of Loot: that rollable table could not be found.",
   "WHEELOFLOOT.Notify.TableNotReady": "Wheel of Loot: \"{name}\" is not ready. {fault}",
   "WHEELOFLOOT.Notify.TwinOnWheel": "\"{name}\" is already on the wheel from a different source. Both are now listed.",
