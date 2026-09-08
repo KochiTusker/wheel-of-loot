@@ -31,6 +31,9 @@ const REGISTRY = new Map();
  * @property {(actor: Actor) => boolean} isRewardable  May this actor receive a prize?
  * @property {(source: object) => string} descriptionOf  Raw description HTML.
  * @property {(source: object) => string} sourceOf   Book or publication an entry came from.
+ * @property {(source: object) => string|null} priceOf     Display-ready price, or null.
+ * @property {(source: object) => number|null} usesMaxOf   Charge capacity, or null.
+ * @property {(source: object) => string|null} subtypeOf   Item subtype, or null.
  */
 
 /* -------------------------------------------- */
@@ -55,6 +58,41 @@ const SOURCE_PATHS = [
   "system.details.source",
   "system.source"
 ];
+
+/**
+ * Price, charges and subtype: the three fields that tell one *printing* of an
+ * item from another.
+ *
+ * They exist here rather than being read inline because they are what the
+ * duplicate detector discriminates on. Read through dnd5e's paths in a pf2e
+ * world they all come back empty, every printing scores identically, and the
+ * fold silently stops distinguishing the ten-charge Dust of Dryness from the
+ * one-charge one. Getting them wrong does not throw; it quietly makes the
+ * feature useless, which is worse.
+ */
+const PRICE_PATHS = ["system.price.value", "system.price", "system.cost.value", "system.cost"];
+const USES_PATHS = ["system.uses.max", "system.uses.value", "system.charges.max", "system.charges.value"];
+const SUBTYPE_PATHS = ["system.type.value", "system.category", "system.itemType", "system.subtype", "system.group"];
+
+/**
+ * Reduce whatever a system keeps at one of those paths to something comparable.
+ *
+ * Systems disagree wildly: a number, a string, or a record like `{gp: 5}`. An
+ * object is flattened deterministically rather than dropped, because "5 gp" and
+ * "3 sp" have to end up different for the fold to work at all.
+ */
+function scalar(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" || typeof value === "string") return String(value);
+  if (typeof value === "object") {
+    const parts = Object.entries(value)
+      .filter(([, v]) => v !== null && v !== undefined && v !== "")
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`);
+    return parts.length ? parts.join(" ") : null;
+  }
+  return null;
+}
 
 /** Description lives in a different place in almost every system. Try the common ones. */
 const DESCRIPTION_PATHS = [
@@ -149,6 +187,30 @@ export const GENERIC_ADAPTER = {
       if (typeof value === "string" && value.trim()) return value.trim();
     }
     return "";
+  },
+
+  priceOf(entry) {
+    for (const path of PRICE_PATHS) {
+      const value = scalar(foundry.utils.getProperty(entry, path));
+      if (value !== null) return value;
+    }
+    return null;
+  },
+
+  usesMaxOf(entry) {
+    for (const path of USES_PATHS) {
+      const value = Number(foundry.utils.getProperty(entry, path));
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+    return null;
+  },
+
+  subtypeOf(entry) {
+    for (const path of SUBTYPE_PATHS) {
+      const value = foundry.utils.getProperty(entry, path);
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return null;
   },
 
   descriptionOf(source) {

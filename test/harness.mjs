@@ -82,3 +82,57 @@ export function installWorldStub({packs = [], items = []} = {}) {
   globalThis.game.items = items;
   return globalThis.game;
 }
+
+/**
+ * The globals `buildEntries` reaches for beyond the settings stub.
+ *
+ * Three, and each is a fact about the module rather than a convenience: it
+ * needs the table-result type enum, it resolves wedges by uuid, and it strips
+ * markup out of a description through a DOM node.
+ *
+ * The `document` stand-in is faithful only for text carrying no markup, which
+ * is all these checks feed it — `plainText` collapses whitespace and truncates
+ * by itself, and a tag-free string has no elements to remove. Enrichment is
+ * Foundry's own and is stubbed as identity, so what the checks assert about is
+ * what the module does with the result rather than what Foundry does to it.
+ *
+ * @param {Record<string, object>} docs  uuid -> document, for `fromUuid`.
+ */
+export function installEntryStub(docs = {}) {
+  globalThis.CONST ??= {};
+  globalThis.CONST.TABLE_RESULT_TYPES = {DOCUMENT: "document", TEXT: "text"};
+  globalThis.CONFIG ??= {};
+  globalThis.CONFIG.ux = {TextEditor: {enrichHTML: async html => html}};
+  globalThis.fromUuid = async uuid => docs[uuid] ?? null;
+  globalThis.document ??= {
+    createElement: () => ({
+      innerHTML: "",
+      querySelectorAll: () => [],
+      get textContent() { return this.innerHTML; }
+    })
+  };
+  return docs;
+}
+
+/**
+ * A stand-in for Foundry's `Roll`, so the wheel's chooser can be exercised.
+ *
+ * Records every formula it is asked to evaluate, which is how the checks tell
+ * the flat roll from the weighted one — the two are the whole point of
+ * `rollSlice`, and they are indistinguishable from the result alone.
+ *
+ * @param {number[]} totals  Handed out in order, one per roll.
+ * @returns {{formulas: string[]}}
+ */
+export function installRollStub(totals) {
+  const seen = {formulas: []};
+  const queue = [...totals];
+  globalThis.Roll = class {
+    constructor(formula) {
+      seen.formulas.push(formula);
+      this.total = queue.shift();
+    }
+    async evaluate() { return this; }
+  };
+  return seen;
+}

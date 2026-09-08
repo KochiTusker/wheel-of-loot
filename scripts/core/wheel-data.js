@@ -202,15 +202,20 @@ export function slotCount(table) {
  * Resolve every result into a wheel entry, pulling name, art, rarity and rules
  * text off the real document so the reveal can describe what was won.
  *
- * @param {RollTable} table
+ * Takes results rather than the table they belong to, because it never needed
+ * anything else — and because the builder's dry run has results that are not on
+ * a table yet. A rehearsal assembled by lookalike code would be worth nothing;
+ * this way the rehearsal and the real wheel are built by the same function.
+ *
+ * @param {Iterable<TableResult|object>} results
  * @returns {Promise<{entries: object[], slots: number, missing: string[]}>}
  */
-export async function buildEntries(table) {
+export async function buildEntries(results) {
   const adapter = systemAdapter();
   const entries = [];
   const missing = [];
 
-  const ordered = [...table.results].sort((a, b) => (a.range?.[0] ?? 0) - (b.range?.[0] ?? 0));
+  const ordered = [...results].sort((a, b) => (a.range?.[0] ?? 0) - (b.range?.[0] ?? 0));
   for (const result of ordered) {
     const lo = result.range?.[0] ?? 0;
     const hi = result.range?.[1] ?? 0;
@@ -230,7 +235,10 @@ export async function buildEntries(table) {
     }
 
     const coin = !isDocument ? adapter.parseCurrency(result.name) : null;
-    const rarity = doc ? adapter.rarityOf(doc) : null;
+    // A custom prize has no document to ask, so it carries its own rarity on a
+    // flag. Without it a homebrew artifact would take the same neutral grey as a
+    // torch, which is the one thing a rarity colour exists to prevent.
+    const rarity = doc ? adapter.rarityOf(doc) : (result.getFlag?.(MODULE_ID, "rarity") || null);
     const description = doc ? adapter.descriptionOf(doc) : result.description;
 
     entries.push({

@@ -20,16 +20,16 @@ import {
 import {isOurGrant} from "../scripts/core/undo.js";
 import {wheelShape} from "../scripts/core/wheels.js";
 
-import {installSettingsStub, installWorldStub} from "./harness.mjs";
+import {installEntryStub, installRollStub, installSettingsStub, installWorldStub} from "./harness.mjs";
 
 import {
-  clampSlots, disperseSlots, labelBudget, labelFontSize, MAX_SLOTS, MIN_SLOTS,
+  buildEntries, clampSlots, disperseSlots, labelBudget, labelFontSize, MAX_SLOTS, MIN_SLOTS,
   mulberry32, paletteCycle, readStock, sliceColours, SLOT_PRESETS, slotCount, validateTable,
   WHEEL_PALETTE
 } from "../scripts/core/wheel-data.js";
 import {distributeSlots, drawDistinct, planWheel, rarityWeight} from "../scripts/core/wheel-plan.js";
 import {GENERIC_ADAPTER} from "../scripts/systems/adapter.js";
-import {registerDnd5e} from "../scripts/systems/dnd5e.js";
+import {DND5E_ADAPTER, registerDnd5e} from "../scripts/systems/dnd5e.js";
 import {
   buildCatalogue, cachedCatalogue, catalogueRow, invalidateCatalogue,
   isWorldItem, removeWorldItem, upsertWorldItem
@@ -39,8 +39,8 @@ import {
   normaliseName, printingSignature, redundancySignature
 } from "../scripts/core/dedupe.js";
 import {
-  DEFAULT_ODDS, MAX_ODDS, MIN_ODDS, clampOdds, effectiveWeights, isUnweighted,
-  isExhausted, pickEntry, slicesOf, totalWeight, trueChances
+  DEFAULT_ODDS, MAX_ODDS, MIN_ODDS, canRollFlat, clampOdds, effectiveWeights, isUnweighted,
+  isExhausted, pickEntry, rollSlice, slicesOf, totalWeight, trueChances
 } from "../scripts/core/odds.js";
 import {
   OVERRIDABLE, PALETTES, allowGift, allowRefuse, autoClose, chatCardMode, coinDenomination, coinPresets,
@@ -1277,6 +1277,230 @@ check("results with no slot range are skipped rather than drawn as nothing", () 
 
 check("an empty table has no shape at all", () => {
   eq(wheelShape(shapedTable([])), [], "nothing to draw");
+});
+
+
+/* -------------------------------------------- */
+/*  Prizes with no document behind them         */
+/* -------------------------------------------- */
+
+/** One table result, shaped the way both a real table and the builder produce. */
+function result({name, range, uuid = null, img = "", description = "", flags = {}}) {
+  return {
+    name,
+    range,
+    img,
+    description,
+    id: `r-${name}`,
+    type: uuid ? "document" : "text",
+    documentUuid: uuid,
+    getFlag: (module, key) => flags[key]
+  };
+}
+
+check("buildEntries works from results that are not on a table", async () => {
+  // The dry run's whole premise: the builder can hand its unsaved working set
+  // to the very function the live wheel uses, so a rehearsal cannot drift from
+  // the real thing.
+  installSettingsStub(new Map());
+  installEntryStub({"Item.real": {name: "Longsword", img: "sword.webp", system: {}}});
+
+  const {entries, slots, missing} = await buildEntries([
+    result({name: "placeholder", range: [1, 8], uuid: "Item.real"}),
+    result({name: "A favour from the Duke", range: [9, 12]})
+  ]);
+
+  eq(entries.length, 2);
+  eq(slots, 12, "slots come off the ranges, as they do from a table");
+  eq(missing, [], "nothing is missing");
+  eq(entries[0].name, "Longsword", "the document's own name wins over the result's");
+  eq(entries[0].count, 8);
+  eq(entries[1].name, "A favour from the Duke");
+  eq(entries[1].count, 4);
+});
+
+check("a custom prize carries its own rarity and its own words", async () => {
+  installSettingsStub(new Map());
+  installEntryStub();
+
+  const {entries} = await buildEntries([
+    result({
+      name: "The Duke owes you one",
+      range: [1, 4],
+      description: "Call it in once, for anything within his power.",
+      flags: {rarity: "legendary"}
+    })
+  ]);
+
+  const prize = entries[0];
+  eq(prize.rarity, "legendary", "there is no document to ask, so the flag is the answer");
+  eq(prize.ink, "#b26a00", "and it is inked like the legendary it says it is");
+  eq(prize.description, "Call it in once, for anything within his power.");
+  eq(prize.uuid, null, "nothing will be created when this is won");
+});
+
+check("a custom prize with no rarity is not mistaken for a common one", async () => {
+  installSettingsStub(new Map());
+  installEntryStub();
+  const {entries} = await buildEntries([result({name: "A rumour", range: [1, 4]})]);
+  eq(entries[0].rarity, null, "absent, rather than the first rarity in the list");
+  eq(entries[0].ink, "#3f3f46", "so it takes the neutral ink");
+});
+
+check("a wedge whose item has been deleted still lays out, and is reported", async () => {
+  // The case a GM actually hits: an item is deleted, or lives in a compendium
+  // from a module that has since been uninstalled. The wheel must still be
+  // drawable — silently dropping the wedge would change every other wedge's
+  // odds — but the GM has to be told.
+  installSettingsStub(new Map());
+  installEntryStub();
+
+  const {entries, slots, missing} = await buildEntries([
+    result({name: "Boots of Elvenkind", range: [1, 8], uuid: "Item.gone", img: "boots.webp"})
+  ]);
+
+  eq(missing, ["Boots of Elvenkind"], "named, so the GM can find it");
+  eq(slots, 8, "the wedge keeps its slices; the wheel's odds do not shift under it");
+  eq(entries[0].name, "Boots of Elvenkind", "the result still remembers what it was");
+  eq(entries[0].img, "boots.webp");
+  eq(entries[0].uuid, null, "but nothing will be created from it");
+});
+
+check("coin is still coin whether it came from the coin bar or a typed prize", async () => {
+  installSettingsStub(new Map());
+  installEntryStub();
+  const {entries} = await buildEntries([
+    result({name: "250 gp", range: [1, 4]}),
+    result({name: "A favour", range: [5, 8]})
+  ]);
+  eq(entries[0].isCoin, true, "parsed out of the name, whichever button typed it");
+  eq(entries[1].isCoin, false);
+});
+
+/* -------------------------------------------- */
+/*  Choosing the winning slice                  */
+/* -------------------------------------------- */
+
+/** Entries as buildEntries produces them, for the chooser. */
+function spinnable(spec) {
+  return spec.map(([count, odds, depleted]) => ({count, odds, depleted: !!depleted}));
+}
+
+check("an untouched wheel still rolls the flat 1d<slices> it always did", async () => {
+  const roll = installRollStub([17]);
+  const entries = spinnable([[32], [16], [16]]);
+  const layout = new Array(64).fill(0);
+
+  const slice = await rollSlice(entries, layout);
+  eq(roll.formulas, ["1d64"], "one flat roll over the slices, exactly as in v1");
+  eq(slice, 16, "and the slice is the roll, zero-based");
+});
+
+check("a weighted wheel rolls over the summed weights instead", async () => {
+  // 8 slices at 100, 2 slices at 25 -> 800 + 50 faces.
+  const roll = installRollStub([805]);
+  const entries = spinnable([[8, 100], [2, 25]]);
+  const layout = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1];
+
+  const slice = await rollSlice(entries, layout);
+  eq(roll.formulas, ["1d850"], "the faces are the effective weights, not the slices");
+  assert([8, 9].includes(slice), "and it landed on one of the weighted entry's slices");
+});
+
+check("a claimed wedge cannot be landed on, even with the odds untouched", async () => {
+  // The bug this guards: depletion sets an entry's weight to zero, but nothing
+  // about the *odds* has been bent, so the flat roll used to still be taken —
+  // and a flat roll over the slices happily lands on a wedge already struck
+  // through as claimed, handing out a one-of-a-kind prize twice.
+  const entries = spinnable([[8, 100], [8, 100, true]]);
+  const layout = [...Array(8).fill(0), ...Array(8).fill(1)];
+
+  for (let n = 1; n <= 800; n++) {
+    installRollStub([n]);
+    const slice = await rollSlice(entries, layout);
+    assert(slice != null, `roll ${n} produced no slice`);
+    eq(layout[slice], 0, `roll ${n} landed on the claimed wedge`);
+  }
+
+  // And the roll it made says why: over the 800 live faces, not the 16 slices.
+  const roll = installRollStub([1]);
+  await rollSlice(entries, layout);
+  eq(roll.formulas, ["1d800"], "the claimed wedge's slices are not among the faces");
+});
+
+check("canRollFlat states both conditions, not just the odds", () => {
+  assert(canRollFlat(spinnable([[8], [8]])), "a plain wheel");
+  assert(!canRollFlat(spinnable([[8, 25], [8]])), "bent odds disqualify it");
+  assert(!canRollFlat(spinnable([[8], [8, 100, true]])), "so does a claimed wedge");
+  assert(canRollFlat([]), "an empty wheel has nothing to disqualify it");
+});
+
+check("a wheel with nothing left to win refuses to choose", async () => {
+  installRollStub([1]);
+  const entries = spinnable([[8, 100, true], [8, 100, true]]);
+  const slice = await rollSlice(entries, [...Array(8).fill(0), ...Array(8).fill(1)]);
+  eq(slice, null, "reported rather than quietly handing out a spent prize");
+});
+
+
+/* -------------------------------------------- */
+/*  A world that is not D&D                     */
+/* -------------------------------------------- */
+
+check("the generic adapter finds a price wherever a system keeps one", () => {
+  const g = GENERIC_ADAPTER;
+  eq(g.priceOf({system: {price: {value: 5}}}), "5", "a plain number");
+  eq(g.priceOf({system: {cost: 12}}), "12", "a system that calls it cost");
+  // pf2e keeps a record rather than a number; flattening it deterministically
+  // is what lets two differently-priced printings still tell each other apart.
+  eq(g.priceOf({system: {price: {value: {gp: 5}}}}), "gp:5");
+  eq(g.priceOf({system: {price: {value: {gp: 5, sp: 2}}}}), "gp:5 sp:2", "stable, whatever the key order");
+  eq(g.priceOf({system: {price: {value: {sp: 2, gp: 5}}}}), "gp:5 sp:2");
+  eq(g.priceOf({system: {}}), null, "absent stays absent rather than becoming zero");
+  eq(g.priceOf({system: {price: {value: ""}}}), null);
+});
+
+check("the generic adapter finds charges and a subtype", () => {
+  const g = GENERIC_ADAPTER;
+  eq(g.usesMaxOf({system: {uses: {max: 10}}}), 10);
+  eq(g.usesMaxOf({system: {charges: {max: 3}}}), 3, "another system's word for it");
+  eq(g.usesMaxOf({system: {uses: {max: 0}}}), null, "zero charges is not a charge count");
+  eq(g.usesMaxOf({system: {}}), null);
+
+  eq(g.subtypeOf({system: {type: {value: "potion"}}}), "potion");
+  eq(g.subtypeOf({system: {category: "alchemical"}}), "alchemical");
+  eq(g.subtypeOf({system: {}}), null);
+});
+
+check("dnd5e says which coin the price is in", () => {
+  eq(DND5E_ADAPTER.priceOf({system: {price: {value: 50, denomination: "sp"}}}), "50 sp");
+  eq(DND5E_ADAPTER.priceOf({system: {price: {value: 5}}}), "5 gp", "gold when unstated, as 5e does");
+  eq(DND5E_ADAPTER.priceOf({system: {price: {}}}), null);
+  eq(DND5E_ADAPTER.usesMaxOf({system: {uses: {max: 3}}}), 3);
+  eq(DND5E_ADAPTER.subtypeOf({system: {type: {value: "wand"}}}), "wand");
+});
+
+check("two printings still tell each other apart in a world that is not D&D", () => {
+  // The failure this guards is silent: read through 5e's field names, a pf2e
+  // world's rows all come back priceless and typeless, every signature matches,
+  // and the fold quietly collapses genuinely different printings into one.
+  const g = GENERIC_ADAPTER;
+  const row = entry => ({
+    name: "Dust of Dryness",
+    source: "",
+    rarity: g.rarityOf(entry),
+    price: g.priceOf(entry),
+    itemType: "consumable",
+    packId: "pf2e.equipment",
+    usesMax: g.usesMaxOf(entry)
+  });
+
+  const cheap = row({system: {price: {value: {gp: 5}}, uses: {max: 1}}});
+  const dear = row({system: {price: {value: {gp: 50}}, uses: {max: 10}}});
+
+  assert(redundancySignature(cheap) !== redundancySignature(dear),
+    "the ten-use printing is not a redundant copy of the one-use printing");
+  assert(completeness(dear) > 0, "and a pf2e row scores as complete rather than as a stub");
 });
 
 /* -------------------------------------------- */

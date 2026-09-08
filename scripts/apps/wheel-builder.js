@@ -17,11 +17,12 @@ import {
   catalogueTypes, invalidateCatalogue
 } from "../core/catalogue.js";
 import {
-  clampSlots, MAX_SLOTS, MIN_SLOTS, readStock, richText, SLOT_PRESETS, slotCount
+  buildEntries, clampSlots, disperseSlots, MAX_SLOTS, MIN_SLOTS, readStock, richText,
+  SLOT_PRESETS, slotCount
 } from "../core/wheel-data.js";
 import {DEDUPE_MODES, foldDuplicates} from "../core/dedupe.js";
 import {DEFAULT_ODDS, MAX_ODDS, MIN_ODDS, clampOdds, isUnweighted, trueChances} from "../core/odds.js";
-import {coinDenomination, coinPresets, defaultSlots} from "../core/settings.js";
+import {coinDenomination, coinPresets, defaultSlots, resolveWheelConfig} from "../core/settings.js";
 import {MODULE_ID, t} from "../core/constants.js";
 import {planWheel} from "../core/wheel-plan.js";
 import {systemAdapter} from "../systems/adapter.js";
@@ -36,6 +37,14 @@ const USE_LABEL = {
 
 /** Rows rendered before the list is cut short; the filters are the answer. */
 const CATALOGUE_CAP = 300;
+
+/**
+ * Art for a prize the GM has not chosen art for.
+ *
+ * One of Foundry's own bundled icons rather than anything drawn for this
+ * module, so it is present in every install and carries no licence question.
+ */
+const DEFAULT_PRIZE_IMG = "icons/sundries/scrolls/scroll-bound-gold.webp";
 
 export class WheelBuilder extends ApplicationV2 {
   /** @type {WheelBuilder|null} The open builder, if there is one. */
@@ -57,6 +66,9 @@ export class WheelBuilder extends ApplicationV2 {
       bump: WheelBuilder.#onBump,
       add: WheelBuilder.#onAdd,
       addCoin: WheelBuilder.#onAddCoin,
+      custom: WheelBuilder.#onCustom,
+      editEntry: WheelBuilder.#onEditEntry,
+      dryRun: WheelBuilder.#onDryRun,
       pad: WheelBuilder.#onPad,
       clearFilters: WheelBuilder.#onClearFilters,
       refresh: WheelBuilder.#onRefresh,
@@ -126,15 +138,30 @@ export class WheelBuilder extends ApplicationV2 {
           try { doc = await fromUuid(result.documentUuid); } catch { doc = null; }
           missing = !doc;
           rarity = doc ? adapter.rarityOf(doc) : null;
-          source = doc ? (foundry.utils.getProperty(doc, "system.source.book")
-            || foundry.utils.getProperty(doc, "system.source.custom") || "") : "";
+          // Through the adapter rather than dnd5e's own paths. A wedge whose
+          // item is not in the index is precisely the case where another
+          // system's field names matter, and reading system.source.* here made
+          // every non-5e world show a dash.
+          source = doc ? adapter.sourceOf(doc) : "";
           profile = doc ? adapter.useProfile(doc) : "single";
         }
       }
+      // A prize with no document behind it keeps its own rarity and its own
+      // words, because there is nothing else to ask.
+      const custom = !result.documentUuid && !adapter.parseCurrency(result.name);
+      if (!result.documentUuid) rarity = result.getFlag?.(MODULE_ID, "rarity") || null;
+      // Older saves copied the name into the description, which printed the
+      // prize's name twice on the reveal card. Treat that as no description.
+      const description = result.description && result.description !== result.name
+        ? result.description
+        : "";
+
       rows.push({
         uuid: result.documentUuid ?? null,
         name: result.name,
         img: result.img,
+        description,
+        custom,
         weight,
         odds: clampOdds(result.getFlag?.(MODULE_ID, "odds") ?? DEFAULT_ODDS),
         jackpot: result.getFlag?.(MODULE_ID, "jackpot") === true,
@@ -243,6 +270,10 @@ export class WheelBuilder extends ApplicationV2 {
           <header>
             <h2>${t("Builder.OnTheWheel")}</h2>
             <div class="wol-b-wheelbtns">
+              <button type="button" class="wol-b-ghost wol-b-dry" data-action="dryRun"
+                data-tooltip="${t("Builder.DryRunHint")}">
+                <i class="fa-solid fa-eye"></i> ${t("Builder.DryRun")}
+              </button>
               <button type="button" class="wol-b-ghost" data-action="rollWheel"
                 data-tooltip="${t("Builder.RollWheelHint")}">
                 <i class="fa-solid fa-dice"></i> ${t("Builder.RollWheel")}
@@ -263,6 +294,10 @@ export class WheelBuilder extends ApplicationV2 {
           <div class="wol-b-coinbar">
             <p class="wol-b-hint">${t("Builder.DropHint")}</p>
             <div class="wol-b-coin">
+              <button type="button" class="wol-b-ghost" data-action="custom"
+                data-tooltip="${t("Builder.NewPrizeHint")}">
+                <i class="fa-solid fa-gift"></i> ${t("Builder.NewPrize")}
+              </button>
               <select name="coin">
                 ${coinPresets().map(v => `<option value="${v}">${v} ${denom}</option>`).join("")}
               </select>
@@ -510,6 +545,8 @@ export class WheelBuilder extends ApplicationV2 {
       uuid: row.uuid,
       name: row.name,
       img: row.img,
+      description: "",
+      custom: false,
       weight,
       odds: DEFAULT_ODDS,
       jackpot: false,
@@ -597,14 +634,16 @@ export class WheelBuilder extends ApplicationV2 {
       const use = USE_LABEL[e.profile ?? "single"];
       const clash = nameCounts.get(e.name) > 1;
       return `
-      <li class="wol-b-row entry${e.isCoin ? " coin" : ""}${e.missing ? " missing" : ""}${clash ? " clash" : ""}"
-        data-index="${i}">
+      <li class="wol-b-row entry${e.isCoin ? " coin" : ""}${e.custom ? " custom" : ""}${
+        e.missing ? " missing" : ""}${clash ? " clash" : ""}" data-index="${i}">
         <img src="${foundry.utils.escapeHTML(e.img || "icons/svg/item-bag.svg")}" alt="">
         <span class="nm">${e.missing ? `<i class="fa-solid fa-triangle-exclamation" data-tooltip="${
           t("Builder.MissingItem")}"></i> ` : ""}${clash ? `<i class="fa-solid fa-clone" data-tooltip="${
           t("Builder.NameClash")}"></i> ` : ""}${foundry.utils.escapeHTML(e.name)}</span>
-        ${e.uuid ? `<span class="src" data-tooltip="${t("Builder.SourceBook")}">${
-          foundry.utils.escapeHTML(e.source || "—")}</span>` : `<span class="src"></span>`}
+        ${e.uuid
+          ? `<span class="src" data-tooltip="${t("Builder.SourceBook")}">${
+              foundry.utils.escapeHTML(e.source || "—")}</span>`
+          : `<span class="src">${e.custom ? t("Builder.CustomTag") : ""}</span>`}
         ${adapter.tracksUses ? (e.uuid
           ? `<span class="use u-${e.profile ?? "single"}" data-tooltip="${t(use.key)}">${use.tag}</span>`
           : `<span class="use"></span>`) : ""}
@@ -630,6 +669,12 @@ export class WheelBuilder extends ApplicationV2 {
           data-tooltip="${t("Builder.JackpotHint")}">
           <i class="fa-solid fa-star"></i>
         </button>
+        ${e.custom || e.missing
+          ? `<button type="button" class="ed" data-action="editEntry" data-index="${i}"
+              data-tooltip="${t(e.missing ? "Builder.RepairTip" : "Builder.EditPrizeTip")}">
+              <i class="fa-solid fa-pen"></i>
+            </button>`
+          : `<span class="ed"></span>`}
         <button type="button" class="rr" data-action="rerollOne" data-index="${i}"
           data-tooltip="${t("Builder.RerollHint")}"${e.isCoin ? " disabled" : ""}>
           <i class="fa-solid fa-dice-d20"></i>
@@ -734,6 +779,8 @@ export class WheelBuilder extends ApplicationV2 {
       uuid: null,
       name,
       img: "icons/commodities/currency/coin-engraved-jolly-roger-gold.webp",
+      description: "",
+      custom: false,
       weight: 1,
       odds: DEFAULT_ODDS,
       jackpot: false,
@@ -746,6 +793,168 @@ export class WheelBuilder extends ApplicationV2 {
     });
     this.#markDirty(this.element);
     this.#renderEntries(this.element);
+  }
+
+  /**
+   * Add a prize that is not an item in this world at all.
+   *
+   * This closes the gap every GM hits eventually: the best rewards are
+   * frequently not documents. A favour owed by the duke, a title, a rumour,
+   * "roll again on the tavern table", a homebrew relic nobody has written up
+   * yet — none of these is an Item, and before this the only way onto the wheel
+   * was to create one first. That is a chore for a prize with no mechanics to
+   * carry, and it leaves a junk item behind in the world afterwards.
+   *
+   * Stored as a text result, which the wheel has understood since the first
+   * version: the reveal card shows the words, and the chat card tells the GM to
+   * hand it over rather than pretending something was granted.
+   */
+  static async #onCustom(event, target) {
+    const prize = await this.#askPrize({title: t("Builder.NewPrizeTitle")});
+    if (!prize) return;
+    this.entries.push(this.#toCustomEntry(prize));
+    this.#markDirty(this.element);
+    this.#renderEntries(this.element);
+  }
+
+  /**
+   * Edit a prize that has no working document behind it.
+   *
+   * Offered in two cases, for one reason: the wedge's own fields are the only
+   * description of the prize that exists. A custom prize is edited outright,
+   * and a wedge whose item has been deleted can be *kept* — its name and art
+   * are still on the table result, so instead of making the GM delete the wedge
+   * and rebuild it, the broken link is cut and what remains becomes a custom
+   * prize.
+   *
+   * A working item-backed wedge is deliberately not editable here. Its name and
+   * art come from the item, and letting them drift apart would mean the wheel
+   * promising one thing and granting another.
+   */
+  static async #onEditEntry(event, target) {
+    const i = Number(target.dataset.index);
+    const entry = this.entries[i];
+    if (!entry) return;
+    const repair = !!entry.missing;
+
+    const prize = await this.#askPrize({
+      title: repair ? t("Builder.RepairTitle") : t("Builder.EditPrizeTitle"),
+      entry,
+      repair
+    });
+    if (!prize) return;
+
+    this.entries[i] = {
+      ...entry,
+      ...this.#toCustomEntry(prize),
+      // Slots, odds, jackpot and stock describe the wedge's place on the wheel
+      // rather than what the prize is, so editing the prize must not silently
+      // retune how likely it is or how many are left.
+      weight: entry.weight,
+      odds: entry.odds,
+      jackpot: entry.jackpot,
+      stock: entry.stock
+    };
+    this.#markDirty(this.element);
+    this.#renderEntries(this.element);
+  }
+
+  /** A dialog's answer -> a working entry with no document behind it. */
+  #toCustomEntry(prize) {
+    // A prize typed as "500 gp" is coin whichever route it arrived by, because
+    // the payout path reads the denomination back out of the name.
+    const isCoin = !!systemAdapter().parseCurrency(prize.name);
+    return {
+      uuid: null,
+      name: prize.name,
+      img: prize.img,
+      description: prize.description,
+      custom: !isCoin,
+      weight: 1,
+      odds: DEFAULT_ODDS,
+      jackpot: false,
+      stock: null,
+      rarity: prize.rarity,
+      source: "",
+      profile: "single",
+      missing: false,
+      isCoin
+    };
+  }
+
+  /**
+   * The form behind a custom prize.
+   *
+   * Four fields, because four is what a wedge actually shows: the name on the
+   * rim, the art on the reveal card, the ink that name is printed in, and the
+   * words underneath it. The rarity select is omitted entirely in a system that
+   * has no rarities rather than offered and ignored.
+   */
+  async #askPrize({title, entry = null, repair = false}) {
+    const adapter = systemAdapter();
+    const name = entry?.name ?? "";
+    const img = entry?.img || DEFAULT_PRIZE_IMG;
+    const description = entry?.description ?? "";
+    const rarity = entry?.rarity ?? "";
+
+    const result = await DialogV2.wait({
+      window: {title, icon: "fa-solid fa-gift"},
+      classes: ["wol-dialog"],
+      content: `<div class="wol-form wol-prizeform">
+          <p class="hint">${t(repair ? "Builder.RepairHint" : "Builder.NewPrizeHint")}</p>
+          <div class="form-group">
+            <label for="wol-prize-name">${t("Builder.PrizeName")}</label>
+            <input type="text" id="wol-prize-name" name="name"
+              value="${foundry.utils.escapeHTML(name)}" autofocus>
+          </div>
+          <div class="form-group">
+            <label for="wol-prize-img">${t("Builder.PrizeImage")}</label>
+            <file-picker id="wol-prize-img" name="img" type="image"
+              value="${foundry.utils.escapeHTML(img)}"></file-picker>
+          </div>
+          ${adapter.rarities.length ? `<div class="form-group">
+            <label for="wol-prize-rarity">${t("Builder.PrizeRarity")}</label>
+            <select id="wol-prize-rarity" name="rarity">
+              <option value="">${t("Builder.PrizeNoRarity")}</option>
+              ${adapter.rarities.map(r => `<option value="${r}"${
+                r === rarity ? " selected" : ""}>${adapter.rarityLabel(r)}</option>`).join("")}
+            </select>
+          </div>` : ""}
+          <div class="form-group wol-prize-text">
+            <label for="wol-prize-desc">${t("Builder.PrizeText")}</label>
+            <textarea id="wol-prize-desc" name="description" rows="4">${
+              foundry.utils.escapeHTML(description)}</textarea>
+          </div>
+          <p class="notes">${t("Builder.PrizeTextHint")}</p>
+        </div>`,
+      position: {width: 520},
+      buttons: [
+        {
+          action: "ok",
+          label: t(repair ? "Builder.RepairKeep" : "Builder.PrizeSave"),
+          icon: "fa-solid fa-check",
+          default: true,
+          callback: (event, button) => ({
+            name: String(button.form.elements.name.value ?? "").trim(),
+            img: String(button.form.elements.img.value ?? "").trim() || DEFAULT_PRIZE_IMG,
+            description: String(button.form.elements.description.value ?? "").trim(),
+            rarity: button.form.elements.rarity?.value || null
+          })
+        },
+        {action: "cancel", label: t("Cancel"), icon: "fa-solid fa-xmark"}
+      ],
+      rejectClose: false,
+      modal: true
+    });
+
+    if (!result || result === "cancel") return null;
+    // A nameless wedge is a blank slice the players cannot read, so this is
+    // refused rather than defaulted to something meaningless.
+    if (!result.name) {
+      ui.notifications.warn(t("Notify.PrizeNeedsName"));
+      return null;
+    }
+    return result;
   }
 
   /**
@@ -911,6 +1120,94 @@ export class WheelBuilder extends ApplicationV2 {
     this.#renderCatalogue(this.element);
   }
 
+  /* ---------------------------------------- */
+  /*  Dry run                                 */
+  /* ---------------------------------------- */
+
+  /**
+   * The working set expressed as table results, without writing anything.
+   *
+   * The same shape `#onSave` would write, so what the dry run assembles is
+   * literally what saving would produce — including the odds, the jackpot and
+   * the stock, which are the three things a GM most wants to check before
+   * putting a wheel in front of the table.
+   *
+   * @returns {object[]}
+   */
+  #asResults() {
+    let cursor = 1;
+    return this.entries.map(e => {
+      const range = [cursor, cursor + e.weight - 1];
+      cursor += e.weight;
+      const flags = {
+        odds: clampOdds(e.odds ?? DEFAULT_ODDS),
+        jackpot: e.jackpot === true,
+        stock: e.stock ?? null,
+        rarity: e.rarity ?? null
+      };
+      return {
+        range,
+        type: e.uuid ? CONST.TABLE_RESULT_TYPES.DOCUMENT : CONST.TABLE_RESULT_TYPES.TEXT,
+        documentUuid: e.uuid ?? null,
+        name: e.name,
+        img: e.img,
+        description: e.description ?? "",
+        id: null,
+        getFlag: (module, key) => flags[key]
+      };
+    });
+  }
+
+  /**
+   * Show the wheel exactly as the table will meet it, and let the GM spin it.
+   *
+   * A builder is a list of names and numbers; a wheel is a thing the players
+   * watch. The gap between the two is where the surprises live — a prize whose
+   * name is too long to read at 64 slices, a jackpot that turns out to be
+   * invisible, a palette that fights the art, an odds tweak that quietly made
+   * the grand prize impossible. All of that is obvious in one spin and
+   * invisible in a list.
+   *
+   * Local to this client and bound to nothing: no session, no broadcast, no
+   * credit spent, no prize granted, no stock decremented, nothing written to
+   * the table. It runs on the *unsaved* working set on purpose, so a GM can try
+   * a change, look at it, and abandon it by closing the builder.
+   */
+  static async #onDryRun(event, target) {
+    if (!this.entries.length) {
+      ui.notifications.warn(t("Notify.NothingToPreview"));
+      return;
+    }
+
+    const {entries, slots, missing} = await buildEntries(this.#asResults());
+    if (!entries.length) {
+      ui.notifications.warn(t("Notify.NothingToPreview"));
+      return;
+    }
+
+    // The rehearsal doubles as a check: a wedge pointing at a deleted item is
+    // reported here, rather than at the table where it costs somebody a spin.
+    if (missing.length) {
+      ui.notifications.warn(t("Notify.PreviewMissing", {
+        n: missing.length,
+        names: missing.slice(0, 3).join(", ") + (missing.length > 3 ? "…" : "")
+      }));
+    }
+
+    const {LootWheel} = await import("./wheel-app.js");
+    const {appearance, rules} = resolveWheelConfig(this.table);
+    LootWheel.preview({
+      tableName: this.table.name,
+      entries,
+      // A fresh seed each time, so two rehearsals do not lay out identically
+      // and the GM sees the spread the layout actually produces.
+      layout: disperseSlots(entries, slots, Math.floor(Math.random() * 0xFFFFFFFF)),
+      appearance,
+      rules,
+      dryRun: true
+    });
+  }
+
   /** Shared prompt for the two rolling actions. */
   async #askRoll({title, hint, max, value, showRarity}) {
     const result = await DialogV2.wait({
@@ -1017,13 +1314,16 @@ export class WheelBuilder extends ApplicationV2 {
       .join(", ");
     const profile = adapter.useProfile(doc);
 
+    // Every fact goes through the adapter, so this panel says something true in
+    // a world running any system rather than dashes in all but one.
+    const maxUses = adapter.usesMaxOf(doc);
     const facts = [
-      [t("Builder.Fact.Source"), s.source?.book || s.source?.custom || "—"],
+      [t("Builder.Fact.Source"), adapter.sourceOf(doc) || "—"],
       [t("Builder.Fact.Pack"), doc.compendium?.metadata?.label ?? t("Catalogue.WorldItems")],
       [t("Builder.Fact.Rarity"), adapter.rarityOf(doc) ? adapter.rarityLabel(adapter.rarityOf(doc)) : "—"],
-      [t("Builder.Fact.Price"), s.price?.value != null ? `${s.price.value} ${s.price.denomination ?? "gp"}` : "—"],
-      [t("Builder.Fact.Uses"), uses.max ? `${uses.max}${recovery ? ` (${recovery})` : ""}` : t("Use.Single")],
-      [t("Builder.Fact.Type"), s.type?.value || doc.type]
+      [t("Builder.Fact.Price"), adapter.priceOf(doc) ?? "—"],
+      [t("Builder.Fact.Uses"), maxUses ? `${maxUses}${recovery ? ` (${recovery})` : ""}` : t("Use.Single")],
+      [t("Builder.Fact.Type"), adapter.subtypeOf(doc) || doc.type]
     ];
 
     panel.innerHTML = `
@@ -1153,9 +1453,11 @@ export class WheelBuilder extends ApplicationV2 {
           stock: e.stock ?? null
         }}
       };
-      return e.uuid
-        ? {...base, type: CONST.TABLE_RESULT_TYPES.DOCUMENT, documentUuid: e.uuid}
-        : {...base, type: CONST.TABLE_RESULT_TYPES.TEXT, description: e.name};
+      if (e.uuid) return {...base, type: CONST.TABLE_RESULT_TYPES.DOCUMENT, documentUuid: e.uuid};
+      // A wedge with no document is the only kind that has to carry its own
+      // rarity, since there is no item to read one off at spin time.
+      base.flags[MODULE_ID].rarity = e.rarity ?? null;
+      return {...base, type: CONST.TABLE_RESULT_TYPES.TEXT, description: e.description ?? ""};
     });
 
     try {

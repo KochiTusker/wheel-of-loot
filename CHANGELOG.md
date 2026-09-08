@@ -7,6 +7,27 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Custom prizes.** A wedge no longer has to be an Item. **New prize** in the
+  builder takes a name, art, rules text and a rarity, and puts anything on the
+  wheel — a favour owed, a title, a rumour, homebrew you have not written up
+  yet. It weights, jackpots, limits and wins like any other wedge; nothing is
+  created on the sheet, and the chat card asks you to hand it over.
+- **Repairing a broken wedge.** When the item behind a prize has been deleted,
+  or lived in a compendium from a module you have since removed, the builder
+  flags it and offers to keep the wedge as a custom prize. Its name, art and
+  rarity are already on the table result, and its slots, odds, jackpot and
+  stock are preserved — so a broken link no longer means rebuilding the wedge.
+- **Dry run.** Spin the wheel exactly as the table will meet it: the real
+  layout, the real art, the real odds, the real confetti. On your screen only —
+  no session, no broadcast, no credit spent, nothing granted, nothing written.
+  It runs on the *unsaved* builder state, so you can try a change, look at it,
+  and abandon it by closing the window. Reported missing items along the way,
+  where it costs nothing, rather than at the table where it costs a spin.
+- `tools/check-icons.mjs`, which verifies that every core Foundry icon path
+  the module names actually exists. The module ships no artwork, so a mistyped
+  path fails silently as a broken image in front of the players; this is the
+  gate that catches it.
+
 - **Weighted odds.** A wedge can now look bigger than it is: an odds multiplier
   in percent decouples a wedge's width from its real chance, so a grand prize
   can be three slices wide and still a quarter as likely as it appears. The
@@ -61,6 +82,21 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   one the wheel created before removing anything.
 
 ### Fixed
+
+- **A claimed wedge could be won a second time.** Depletion sets a wedge's
+  weight to zero, but it does not bend anyone's *odds* — so a wheel that had
+  never been weighted still took the plain `1d<slices>` roll, which happily
+  landed on a wedge already struck through as claimed and handed out a
+  one-of-a-kind prize again. The flat roll is now taken only when it is also
+  correct: no odds bent, and nothing claimed. A wheel that uses no stock limits
+  is unaffected and rolls exactly as before.
+- **Duplicate detection outside D&D 5e.** Price, charges and subtype — the three
+  fields that tell one printing of an item from another — were read at dnd5e's
+  own paths. In any other system they all came back empty, every printing
+  scored identically, and the fold quietly collapsed genuinely different
+  printings into one. They now go through the system adapter, as does the
+  source book on a wedge whose item is not in the index, and the builder's item
+  detail panel.
 
 - The Spin and Rules tabs in the settings did nothing. `tab` is a reserved
   action name in ApplicationV2 — its dispatcher intercepts it and routes to the

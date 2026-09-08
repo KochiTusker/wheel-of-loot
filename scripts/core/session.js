@@ -25,7 +25,7 @@
 import {MODULE_ID, t} from "./constants.js";
 import {creditsFor, debit, getCredits, totalCredits, writeCredits} from "./ledger.js";
 import {autoClose, chatCardMode, gmNeedsCredit, spinDuration, wheelSpeaker} from "./settings.js";
-import {effectiveWeights, isExhausted, isUnweighted, pickEntry, slicesOf, totalWeight} from "./odds.js";
+import {isExhausted, rollSlice} from "./odds.js";
 import {recordGrant} from "./undo.js";
 import {systemAdapter} from "../systems/adapter.js";
 import {callOwner, socket, tell} from "./socket.js";
@@ -146,7 +146,7 @@ export async function requestSpin(sessionId) {
   // phase claimed would kill the wheel for the rest of the session, and the
   // only way out would be for the GM to close it and start again.
   try {
-    const slice = await rollSlice(session);
+    const slice = await rollSlice(session.entries, session.layout);
     if (slice == null) throw new Error("the roll produced no slice");
 
     session.slice = slice;
@@ -255,58 +255,6 @@ export async function releaseAbandonedSpins(userId) {
     released.push(sessionId);
   }
   return released;
-}
-
-/* -------------------------------------------- */
-/*  Rolling                                     */
-/* -------------------------------------------- */
-
-/**
- * Choose the winning slice.
- *
- * Two paths, deliberately. A wheel where nobody has touched the odds takes a
- * plain `1d<slices>` — the same roll the module has always made, so an
- * unweighted wheel is provably unchanged and its dice log stays readable.
- *
- * A weighted wheel rolls over the summed effective weights instead, walks the
- * cumulative total to find the entry, and then picks one of that entry's slices
- * to stop on. Picking among them matters: the layout scatters an entry's slices
- * around the rim, so always taking the first would make a repeat win visibly
- * land in the same place.
- *
- * @param {object} session
- * @returns {Promise<number|null>}  Slice index, or null if the roll fell outside
- *                                  the table — which should be impossible, and
- *                                  is reported rather than silently patched.
- */
-async function rollSlice(session) {
-  const {entries, layout} = session;
-
-  if (isUnweighted(entries)) {
-    const roll = await new Roll(`1d${layout.length}`).evaluate();
-    return roll.total - 1;
-  }
-
-  const weights = effectiveWeights(entries);
-  const total = totalWeight(entries);
-  if (total <= 0) {
-    console.error("Wheel of Loot | every wedge weighs nothing; cannot roll");
-    return null;
-  }
-
-  const roll = await new Roll(`1d${total}`).evaluate();
-  const entryIndex = pickEntry(weights, roll.total);
-  if (entryIndex < 0) {
-    console.error(`Wheel of Loot | roll ${roll.total} fell outside the weighted table of ${total}`);
-    return null;
-  }
-
-  const slices = slicesOf(layout, entryIndex);
-  if (!slices.length) {
-    console.error(`Wheel of Loot | entry ${entryIndex} owns no slices`);
-    return null;
-  }
-  return slices[Math.floor(Math.random() * slices.length)];
 }
 
 /* -------------------------------------------- */

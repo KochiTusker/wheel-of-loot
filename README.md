@@ -10,9 +10,33 @@ the item straight onto their character sheet.
 
 Comes with a builder: browse every Item in your world and compendiums, drag them
 onto the wheel, choose how big the wheel is, and re-roll any prize you don't
-like — or roll a whole wheel at once.
+like — or roll a whole wheel at once. Then **dry run** it: the real wheel, the
+real odds, spun on your screen alone, granting nothing.
 
-Works in any game system. Knows a little extra about D&D 5e.
+**Built for D&D 5e, and not limited to it.** In a 5e world you get rarity
+colours on the rim, coin wedges that pay into the right purse, and an item
+browser that can tell a three-charge wand from a one-use scroll. Everything
+system-specific lives behind one small adapter file, so the module runs in any
+world — and where a system cannot answer a question, the interface hides the
+affordance instead of offering a control that would do nothing.
+
+## Prizes that aren't items
+
+Not every reward is a document, and the good ones frequently aren't. **New
+prize** puts anything on the wheel: a favour owed by the duke, a title, a
+rumour, "roll again on the tavern table", a homebrew relic you haven't written
+up yet. Give it a name, art, rules text and a rarity, and it behaves like any
+other wedge — it can be weighted, made a jackpot, limited to one, and won.
+Nothing is created on the winner's sheet; the chat card tells you to hand it
+over, which is what you were going to do anyway.
+
+The same form repairs a broken wedge. If the item behind a prize is deleted, or
+lived in a compendium from a module you've since removed, the builder flags it —
+and offers to keep the wedge as a custom prize rather than making you rebuild
+it. Its name and art are still there.
+
+Items you create in Foundry while the builder is open appear in the list
+straight away, homebrew included; you don't have to reopen anything.
 
 ---
 

@@ -131,7 +131,7 @@ export async function present({table, allocations} = {}) {
 
   if (allocations) await setSpins.call({socketdata: {userId: game.user.id}}, allocations);
 
-  const {entries, slots} = await buildEntries(doc);
+  const {entries, slots} = await buildEntries(doc.results);
 
   // Everything already claimed is dead weight on the rim. Presenting a wheel
   // whose every wedge is spent would put an unspinnable thing on five screens.

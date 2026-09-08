@@ -18,6 +18,7 @@ import {
   S, allowGift, allowRefuse, backdrop, confettiEnabled, gmNeedsCredit, hubIcon,
   palette, reduceMotion, spinTurns, tickVolume, ticksEnabled, winSound
 } from "../core/settings.js";
+import {rollSlice} from "../core/odds.js";
 import {systemAdapter} from "../systems/adapter.js";
 
 /**
@@ -465,14 +466,36 @@ export class LootWheel {
     footer.innerHTML = "";
 
     if (this.config.preview) {
+      const sub = this.root.querySelector("[data-role=sub]");
+
+      if (this.state === "spinning") {
+        footer.innerHTML = `<p class="wol-wait">${t("Wheel.Spinning")}</p>`;
+        return;
+      }
+
+      // A dry run is a preview you can actually spin. It rolls the real dice
+      // against the real odds and lands on a real wedge; the only difference
+      // from a live wheel is that nothing leaves the room.
+      if (this.config.dryRun) {
+        const spin = document.createElement("button");
+        spin.type = "button";
+        spin.className = "wol-btn wol-btn-spin";
+        spin.innerHTML = `<i class="fa-solid fa-arrows-spin"></i> ${
+          this.state === "landed" ? t("Wheel.SpinAgain") : t("Wheel.Spin")}`;
+        spin.addEventListener("click", () => this.#dryRunSpin(spin), {once: true});
+        footer.append(spin);
+      }
+
       const close = document.createElement("button");
       close.type = "button";
       close.className = "wol-btn wol-btn-ghost";
       close.innerHTML = `<i class="fa-solid fa-xmark"></i> ${t("Setting.ClosePreview")}`;
       close.addEventListener("click", () => this.destroy(), {once: true});
       footer.append(close);
-      const sub = this.root.querySelector("[data-role=sub]");
-      if (sub) sub.innerHTML = `<em>${t("Setting.PreviewNote")}</em>`;
+
+      if (sub) {
+        sub.innerHTML = `<em>${t(this.config.dryRun ? "Wheel.DryRunNote" : "Setting.PreviewNote")}</em>`;
+      }
       return;
     }
 
@@ -525,6 +548,41 @@ export class LootWheel {
       ui.notifications.error(t("Notify.SpinFailed"));
       button.disabled = false;
     }
+  }
+
+  /**
+   * Spin a rehearsal.
+   *
+   * Deliberately routed through `rollSlice` — the very function the GM's live
+   * session calls — rather than through anything written for previewing. A
+   * rehearsal that chose its winner by different arithmetic would be worse than
+   * no rehearsal, because it would look authoritative while being wrong about
+   * exactly the thing the GM is checking.
+   *
+   * Everything after the roll is the ordinary landing path, so the confetti,
+   * the sound, the jackpot banner and the reveal card are the real ones.
+   */
+  async #dryRunSpin(button) {
+    button.disabled = true;
+    if (this.state === "landed") this.resetToIdle();
+
+    const slice = await rollSlice(this.config.entries, this.config.layout);
+    if (slice == null) {
+      ui.notifications.warn(t("Notify.NothingToPreview"));
+      this.#renderActions();
+      return;
+    }
+
+    this.runSpin({
+      slice,
+      durationMs: this.rules.spinMs,
+      spinnerId: game.user.id,
+      spinnerName: game.user.name,
+      actorName: "",
+      actorId: null,
+      // Nothing is being handed over, so there is no character to hand it to.
+      hasActor: false
+    });
   }
 
   runSpin({slice, durationMs, spinnerId, spinnerName, actorName, actorId, hasActor}) {
@@ -652,6 +710,31 @@ export class LootWheel {
   #renderRevealActions() {
     const box = this.root.querySelector(".wol-reveal-actions");
     box.innerHTML = "";
+
+    // A rehearsal has nobody to give anything to. Keep, Gift and Refuse all
+    // reach for a session that does not exist, so they are replaced outright
+    // rather than disabled — and the card says plainly that this was practice.
+    if (this.config.dryRun) {
+      const note = document.createElement("p");
+      note.className = "wol-dryrun-note";
+      note.textContent = t("Wheel.DryRunKept");
+      box.append(note);
+
+      const again = document.createElement("button");
+      again.type = "button";
+      again.className = "wol-btn wol-btn-accept";
+      again.innerHTML = `<i class="fa-solid fa-arrows-spin"></i> ${t("Wheel.SpinAgain")}`;
+      again.addEventListener("click", () => this.#dryRunSpin(again), {once: true});
+      box.append(again);
+
+      const done = document.createElement("button");
+      done.type = "button";
+      done.className = "wol-btn wol-btn-ghost";
+      done.innerHTML = `<i class="fa-solid fa-xmark"></i> ${t("Setting.ClosePreview")}`;
+      done.addEventListener("click", () => this.destroy(), {once: true});
+      box.append(done);
+      return;
+    }
 
     if (this.isSpinner) {
       // A GM may spin without a character; then there is nowhere for Keep to

@@ -127,6 +127,27 @@ export function isUnweighted(entries) {
 }
 
 /**
+ * True when the plain `1d<slices>` roll is not just simpler but *correct*.
+ *
+ * Two conditions, and both matter. Nobody may have bent the odds — that is what
+ * `isUnweighted` says. And nothing may have been claimed: a spent wedge keeps
+ * its slices on the rim so the hoard can be seen emptying, and a flat roll over
+ * the slices would happily land on one, offering a prize that has already been
+ * given away. The weighted walk is the only path that knows a wedge weighs
+ * nothing.
+ *
+ * A wheel with no stock limits can never fail the second condition, so every
+ * wheel built before remove-on-win existed still takes the flat roll it always
+ * did, and its dice log is unchanged.
+ *
+ * @param {{odds?: number, depleted?: boolean}[]} entries
+ * @returns {boolean}
+ */
+export function canRollFlat(entries) {
+  return isUnweighted(entries) && !entries.some(e => e.depleted);
+}
+
+/**
  * Every slice index belonging to an entry.
  *
  * The layout scatters an entry's slices around the rim, so once the roll has
@@ -142,4 +163,61 @@ export function slicesOf(layout, entryIndex) {
   const slices = [];
   for (let i = 0; i < layout.length; i++) if (layout[i] === entryIndex) slices.push(i);
   return slices;
+}
+
+/* -------------------------------------------- */
+/*  Choosing                                    */
+/* -------------------------------------------- */
+
+/**
+ * Choose the winning slice.
+ *
+ * Two paths, deliberately. A wheel where nobody has touched the odds and
+ * nothing has been claimed takes a plain `1d<slices>` — the same roll the
+ * module has always made, so a plain wheel is provably unchanged and its dice
+ * log stays readable. See `canRollFlat` for why claimed wedges disqualify it.
+ *
+ * A weighted wheel rolls over the summed effective weights instead, walks the
+ * cumulative total to find the entry, and then picks one of that entry's slices
+ * to stop on. Picking among them matters: the layout scatters an entry's slices
+ * around the rim, so always taking the first would make a repeat win visibly
+ * land in the same place.
+ *
+ * Lives here rather than beside the session because the builder's dry run needs
+ * it too, and a rehearsal that chose its winner by different arithmetic than the
+ * real spin would be worth nothing. `Roll` is the one Foundry global this file
+ * touches, and only on this path.
+ *
+ * @param {object[]} entries  From buildEntries: count, odds, depleted.
+ * @param {number[]} layout   Slice -> entry index.
+ * @returns {Promise<number|null>}  Slice index, or null if the roll fell outside
+ *                                  the table — which should be impossible, and
+ *                                  is reported rather than silently patched.
+ */
+export async function rollSlice(entries, layout) {
+  if (canRollFlat(entries)) {
+    const roll = await new Roll(`1d${layout.length}`).evaluate();
+    return roll.total - 1;
+  }
+
+  const weights = effectiveWeights(entries);
+  const total = totalWeight(entries);
+  if (total <= 0) {
+    console.error("Wheel of Loot | every wedge weighs nothing; cannot roll");
+    return null;
+  }
+
+  const roll = await new Roll(`1d${total}`).evaluate();
+  const entryIndex = pickEntry(weights, roll.total);
+  if (entryIndex < 0) {
+    console.error(`Wheel of Loot | roll ${roll.total} fell outside the weighted table of ${total}`);
+    return null;
+  }
+
+  const slices = slicesOf(layout, entryIndex);
+  if (!slices.length) {
+    console.error(`Wheel of Loot | entry ${entryIndex} owns no slices`);
+    return null;
+  }
+  return slices[Math.floor(Math.random() * slices.length)];
 }

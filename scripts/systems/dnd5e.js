@@ -57,7 +57,8 @@ export const DND5E_ADAPTER = {
   // have to come back on the index rather than costing a document load per row.
   indexFields: [
     "img", "type", "system.rarity", "system.type.value",
-    "system.price.value", "system.source.book", "system.source.custom", "system.uses"
+    "system.price.value", "system.price.denomination",
+    "system.source.book", "system.source.custom", "system.uses"
   ],
 
   rarities: RARITY_ORDER,
@@ -84,6 +85,18 @@ export const DND5E_ADAPTER = {
 
   sourceOf: entry => (foundry.utils.getProperty(entry, "system.source.book")
     || foundry.utils.getProperty(entry, "system.source.custom") || "").trim(),
+
+  /** dnd5e keeps the denomination beside the number, so say which coin. */
+  priceOf(entry) {
+    const value = foundry.utils.getProperty(entry, "system.price.value");
+    if (value === null || value === undefined || value === "") return null;
+    const denom = foundry.utils.getProperty(entry, "system.price.denomination") || "gp";
+    return `${value} ${denom}`;
+  },
+
+  usesMaxOf: entry => Number(foundry.utils.getProperty(entry, "system.uses.max")) || null,
+
+  subtypeOf: entry => foundry.utils.getProperty(entry, "system.type.value") || null,
 
   parseCurrency(name) {
     const match = /^\s*(\d[\d,]*)\s*(gp|gold|sp|silver|cp|copper|ep|electrum|pp|platinum)\b/i.exec(name ?? "");

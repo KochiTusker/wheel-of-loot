@@ -1258,3 +1258,42 @@
 .wol-m-row .acts button:disabled { opacity: 0.25; cursor: default; }
 .wol-m-row .acts .rm { color: #c0563a; }
 .wol-m-row .acts .rm:hover { background: rgba(190, 70, 60, 0.3); }
+
+/* ---- Custom prizes and the dry run ---- */
+
+/* The edit slot is always present, empty or not, so the columns to its right
+   stay aligned down a list that mixes item wedges with custom ones. */
+.wol-b-row .ed { flex: 0 0 24px; }
+
+/* A prize with no item behind it reads differently on purpose: the GM should be
+   able to see at a glance which wedges the wheel cannot grant by itself. */
+.wol-b-row.custom .nm { font-style: italic; }
+.wol-b-row.custom .src {
+  font-style: italic;
+  text-transform: lowercase;
+  opacity: 0.5;
+}
+
+.wol-b-dry { color: #f2c14e; }
+
+.wol-prizeform textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 4.5rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.wol-prizeform file-picker { flex: 1 1 auto; }
+
+/* Said on the reveal card itself, where a GM in the middle of a rehearsal is
+   actually looking, rather than only in the header. */
+.wol-dryrun-note {
+  flex: 1 0 100%;
+  margin: 0 0 0.5rem;
+  text-align: center;
+  color: #f2c14e;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

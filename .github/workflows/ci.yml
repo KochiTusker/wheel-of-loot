@@ -50,6 +50,12 @@ jobs:
       - name: No unused imports
         run: node tools/check-imports.mjs
 
+      # Reports SKIPPED here — a runner has no Foundry to check against — but it
+      # is the gate that catches a mistyped core icon path locally, and it is
+      # listed so a contributor knows to run it.
+      - name: Bundled icon paths exist
+        run: node tools/check-icons.mjs
+
       - name: Tests
         run: node test/run.mjs
 

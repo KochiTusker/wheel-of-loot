@@ -67,14 +67,17 @@ function toRow(entry, uuid, packId, packLabel) {
     name: entry.name,
     img: entry.img,
     itemType: entry.type,
-    sub: foundry.utils.getProperty(entry, "system.type.value") ?? null,
+    sub: adapter.subtypeOf(entry),
     rarity: adapter.rarityOf(entry),
     // Fall back to the pack's own name so a system that records no book at all
     // still separates one compendium's copy from another's.
     source: book || packLabel,
     book,
-    price: foundry.utils.getProperty(entry, "system.price.value") ?? null,
-    usesMax: foundry.utils.getProperty(entry, "system.uses.max") ?? null,
+    // Through the adapter: these three are what the duplicate fold tells
+    // printings apart by, and reading dnd5e's paths in another system's world
+    // made every printing look identical.
+    price: adapter.priceOf(entry),
+    usesMax: adapter.usesMaxOf(entry),
     profile: adapter.useProfile(entry),
     packId,
     packLabel
