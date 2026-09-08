@@ -52,7 +52,7 @@ export class WheelSettings extends ApplicationV2 {
   #read() {
     const get = key => game.settings.get(MODULE_ID, key);
     return Object.fromEntries(Object.entries(S)
-      .filter(([name]) => !["CREDITS", "MIGRATED"].includes(name))
+      .filter(([name]) => !["CREDITS", "MIGRATED", "LAST_GRANT"].includes(name))
       .map(([, key]) => [key, get(key)]));
   }
 
@@ -343,7 +343,7 @@ export class WheelSettings extends ApplicationV2 {
     const writes = [];
 
     for (const [, key] of Object.entries(S)) {
-      if (["spinCredits", "migratedFrom"].includes(key)) continue;
+      if (["spinCredits", "migratedFrom", "lastGrant"].includes(key)) continue;
       const el = form.querySelector(`[name="${key}"]`);
       if (!el) continue;
       let value;
@@ -378,7 +378,7 @@ export class WheelSettings extends ApplicationV2 {
     for (const [name, key] of Object.entries(S)) {
       // The ledger is live game state, not a preference — resetting the look of
       // the wheel must never confiscate somebody's outstanding spin.
-      if (["CREDITS", "MIGRATED"].includes(name)) continue;
+      if (["CREDITS", "MIGRATED", "LAST_GRANT"].includes(name)) continue;
       const config = game.settings.settings.get(`${MODULE_ID}.${key}`);
       if (config) await game.settings.set(MODULE_ID, key, config.default);
     }

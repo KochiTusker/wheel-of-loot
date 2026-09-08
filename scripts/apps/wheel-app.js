@@ -335,7 +335,7 @@ export class LootWheel {
       const style = `fill:${fill};stroke:${halo};text-anchor:${anchor};font-size:${fontSize}px`;
 
       return `
-        <g class="wol-wedge">
+        <g class="wol-wedge${entry.jackpot ? " jackpot" : ""}">
           <path d="${wedgePath(c, c, outer, inner, start, sweep)}" style="fill:${background}" />
           <text x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" style="${style}"
             transform="rotate(${rotate.toFixed(2)} ${p.x.toFixed(1)} ${p.y.toFixed(1)})"
@@ -491,11 +491,24 @@ export class LootWheel {
 
     this.stopTicks = tickTrack(this.duration);
 
-    rotor.style.transition = `transform ${this.duration}ms cubic-bezier(0.12, 0.66, 0.06, 1)`;
+    // Stop a hair short, then creep the last fraction of a degree home. The
+    // wheel is already decelerating; this extra beat is what turns "it stopped"
+    // into "it *nearly* went past" — the moment the table actually reacts to.
+    const settleMs = Math.min(700, Math.max(320, this.duration * 0.12));
+    const mainMs = this.duration - settleMs;
+    const shortOf = sweep * 0.34;
+
+    rotor.style.transition = `transform ${mainMs}ms cubic-bezier(0.10, 0.62, 0.08, 1)`;
     // Force a reflow so the transition applies from the current angle rather
     // than being collapsed into the same style recalculation.
     void rotor.getBoundingClientRect();
-    rotor.style.transform = `rotate(${final.toFixed(3)}deg)`;
+    rotor.style.transform = `rotate(${(final - shortOf).toFixed(3)}deg)`;
+
+    window.setTimeout(() => {
+      if (this.state !== "spinning") return;
+      rotor.style.transition = `transform ${settleMs}ms cubic-bezier(0.16, 0.9, 0.24, 1)`;
+      rotor.style.transform = `rotate(${final.toFixed(3)}deg)`;
+    }, mainMs + 20);
 
     window.setTimeout(() => this.#onLanded(), this.duration + 60);
   }
@@ -512,6 +525,7 @@ export class LootWheel {
     this.stopTicks?.();
 
     const entry = this.landed;
+    const jackpot = entry.jackpot === true;
     const reveal = this.root.querySelector(".wol-reveal");
     reveal.hidden = false;
     reveal.querySelector(".wol-reveal-img").src = entry.img;
@@ -524,6 +538,16 @@ export class LootWheel {
     name.textContent = entry.name;
     name.style.color = cardInk;
 
+    let banner = reveal.querySelector(".wol-reveal-jackpot");
+    if (jackpot && !banner) {
+      banner = document.createElement("p");
+      banner.className = "wol-reveal-jackpot";
+      banner.textContent = t("Wheel.Jackpot");
+      name.before(banner);
+    } else if (!jackpot && banner) {
+      banner.remove();
+    }
+
     const rarity = reveal.querySelector(".wol-reveal-rarity");
     rarity.textContent = entry.isCoin
       ? t("Wheel.Coin")
@@ -534,9 +558,13 @@ export class LootWheel {
     desc.textContent = entry.description || "";
     desc.hidden = !entry.description;
 
+    reveal.querySelector(".wol-reveal-card").classList.toggle("jackpot", jackpot);
+
     if (confettiEnabled()) {
       const canvas = this.root.querySelector(".wol-confetti");
-      this.stopConfetti = burst(canvas, {originX: 0.5, originY: 0.42, count: 220});
+      // A grand prize earns a bigger burst; anything less and the flourish
+      // stops meaning anything.
+      this.stopConfetti = burst(canvas, {originX: 0.5, originY: 0.42, count: jackpot ? 520 : 220});
     }
     this.#playWinSound();
 

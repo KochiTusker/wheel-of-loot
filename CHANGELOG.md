@@ -3,6 +3,39 @@
 All notable changes to this module are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Weighted odds.** A wedge can now look bigger than it is: an odds multiplier
+  in percent decouples a wedge's width from its real chance, so a grand prize
+  can be three slices wide and still a quarter as likely as it appears. The
+  builder shows the true chance beside every wedge and colours it when it
+  diverges from what the picture implies. Leaving everything at 100% takes the
+  original flat roll, and a test walks every face of both paths to prove they
+  agree.
+- **Themes.** Six looks that set palette and hub together — Fairground,
+  Dragon's Hoard, Fae Court, Grimdark, Clockwork, Chapel. Hub art is Foundry's
+  own bundled game-icons.net set (CC BY 3.0); the module ships no image files.
+- **Preview this wheel** in the settings, showing a real wheel with the current
+  form values, on the GM's screen only.
+- **The scene shows through.** How far the canvas is dimmed behind the wheel is
+  now a setting; at a low value your map reads through it.
+- **Reduced motion**, following each viewer's own system preference by default.
+- **Jackpot wedges.** Mark one wedge as the grand prize: a gold edge on the
+  wheel so it can be tracked while spinning, a bigger confetti burst and a
+  banner on the reveal.
+- **A near-miss beat.** The wheel now stops a third of a slice short and creeps
+  home, which is what turns "it stopped" into "it nearly went past".
+- **Undo the last win.** A quiet button on the result card takes the prize back
+  and refunds the spin. One deep, GM only, and it verifies the item is still the
+  one the wheel created before removing anything.
+
+### Fixed
+
+- The wheel sized on viewport height alone, so a short or narrow window pushed
+  the title off the top.
+
 ## [2.0.0] — 2026-09-08
 
 First public release. Renamed from `sbts-loot-wheel`, made system-agnostic, and

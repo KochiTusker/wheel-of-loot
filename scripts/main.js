@@ -20,6 +20,7 @@ import {openLauncher, pickTable} from "./apps/launcher.js";
 import {registerDnd5e} from "./systems/dnd5e.js";
 import {WheelSettings} from "./apps/settings-menu.js";
 import {runMigration} from "./core/migrate.js";
+import {describeLastGrant, lastGrant, undoLastGrant} from "./core/undo.js";
 
 /* -------------------------------------------- */
 /*  Client-side socket handlers                 */
@@ -116,8 +117,36 @@ export async function grant(allocations) {
   return setSpins.call({socketdata: {userId: game.user.id}}, allocations);
 }
 
+/**
+ * Reverse the most recent grant, with a confirmation. GM only.
+ *
+ * @returns {Promise<boolean>} Whether anything was undone.
+ */
+export async function undo() {
+  if (!game.user.isGM) return false;
+  const description = describeLastGrant();
+  if (!description) {
+    ui.notifications.info(t("Undo.Nothing"));
+    return false;
+  }
+  const ok = await foundry.applications.api.DialogV2.confirm({
+    window: {title: t("Undo.Title"), icon: "fa-solid fa-rotate-left"},
+    content: `<p>${description}</p><p class="notes">${t("Undo.Note")}</p>`,
+    modal: true
+  });
+  if (!ok) return false;
+
+  const result = await undoLastGrant();
+  if (result.ok) {
+    ui.notifications.info(t("Undo.Done"));
+    return true;
+  }
+  ui.notifications.warn(t(`Undo.Fail.${result.reason ?? "error"}`));
+  return false;
+}
+
 /** Everything a macro or another module may reasonably call. */
-const api = {present, build, createTable, grant, getCredits};
+const api = {present, build, createTable, grant, getCredits, undo};
 
 /* -------------------------------------------- */
 /*  Registration                                */
@@ -169,6 +198,30 @@ Hooks.on("updateSetting", setting => {
  * is where a GM already goes looking for one. Everything the module does is
  * reachable from the launcher this opens.
  */
+/**
+ * Offer the way back on the card that records the mistake.
+ *
+ * Only on the most recent grant, and only to a GM — an undo button on an old
+ * card would either be a lie or a much bigger promise than this makes.
+ */
+Hooks.on("renderChatMessageHTML", (message, element) => {
+  if (!game.user.isGM) return;
+  const record = lastGrant();
+  if (!record) return;
+  const card = element.querySelector?.(".wol-card");
+  if (!card || card.querySelector(".wol-undo")) return;
+  if (message.getFlag(MODULE_ID, "sessionId") == null) return;
+  // Only the card for the grant that is actually reversible.
+  if (message.getFlag(MODULE_ID, "grantAt") !== record.at) return;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "wol-undo";
+  button.innerHTML = `<i class="fa-solid fa-rotate-left"></i> ${t("Undo.Button")}`;
+  button.addEventListener("click", () => undo());
+  card.append(button);
+});
+
 Hooks.on("renderRollTableDirectory", (app, element) => {
   if (!game.user.isGM) return;
   // v13+ hands over an HTMLElement; older cores hand over a jQuery object.

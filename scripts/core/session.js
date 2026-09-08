@@ -26,6 +26,7 @@ import {MODULE_ID, t} from "./constants.js";
 import {creditsFor, debit, totalCredits} from "./ledger.js";
 import {autoClose, chatCardMode, gmNeedsCredit, spinDuration, wheelSpeaker} from "./settings.js";
 import {effectiveWeights, isUnweighted, pickEntry, slicesOf, totalWeight} from "./odds.js";
+import {recordGrant} from "./undo.js";
 import {systemAdapter} from "../systems/adapter.js";
 import {callOwner, socket, tell} from "./socket.js";
 
@@ -282,6 +283,21 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
     }
   }
 
+  // Remember what changed hands, so a GM can take it back if it was a mistake.
+  if (accepted && (granted || coins)) {
+    session.grantAt = Date.now();
+    await recordGrant({
+      actorId: actor.id,
+      itemId: granted?.id ?? null,
+      coins: coins ?? null,
+      prizeName: entry.name,
+      tableName: session.tableName,
+      spinnerId: session.currentSpinnerId,
+      spinnerWasGM: !!game.users.get(session.currentSpinnerId)?.isGM,
+      at: session.grantAt
+    });
+  }
+
   await postResultCard(session, accepted, granted, coins);
 
   // Re-arm for whoever still holds credits; close once the wheel is spent.
@@ -352,7 +368,7 @@ async function postResultCard(session, accepted, granted, coins) {
     // A GM-only card keeps the record without spoiling what is still on the
     // wheel for the players who have not spun yet.
     whisper: mode === "gm" ? ChatMessage.getWhisperRecipients("GM").map(u => u.id) : undefined,
-    flags: {[MODULE_ID]: {sessionId: session.sessionId, accepted}}
+    flags: {[MODULE_ID]: {sessionId: session.sessionId, accepted, grantAt: session.grantAt ?? null}}
   });
 }
 

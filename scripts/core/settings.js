@@ -54,7 +54,8 @@ export const S = {
 
   // Internal
   CREDITS: "spinCredits",
-  MIGRATED: "migratedFrom"
+  MIGRATED: "migratedFrom",
+  LAST_GRANT: "lastGrant"
 };
 
 /* -------------------------------------------- */
@@ -383,5 +384,6 @@ export function registerSettings(MenuApplication, slotPresets) {
 
   /* Internal */
   register(S.CREDITS, {type: Object, default: {}});
+  register(S.LAST_GRANT, {type: Object, default: {}});
   register(S.MIGRATED, {type: String, default: ""});
 }

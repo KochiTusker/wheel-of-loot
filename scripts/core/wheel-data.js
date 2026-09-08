@@ -227,6 +227,8 @@ export async function buildEntries(table) {
       count,
       // How likely this wedge really is, independent of how wide it looks.
       odds: clampOdds(result.getFlag?.(MODULE_ID, "odds") ?? DEFAULT_ODDS),
+      // The one wedge the table is really hoping for, if the GM named one.
+      jackpot: result.getFlag?.(MODULE_ID, "jackpot") === true,
       ink: coin ? COIN_COLOUR : (rarity ? adapter.rarityColour(rarity) : NEUTRAL_COLOUR)
     });
   }

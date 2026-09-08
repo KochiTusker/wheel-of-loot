@@ -1073,3 +1073,56 @@
   .wol-overlay { animation: none; }
   .wol-reveal-card { animation: none; }
 }
+
+/* ---- Jackpot ---- */
+
+/* A gold edge, so the prize everyone is hoping for can be found while the wheel
+   is still turning. Drawn on the path itself rather than as an overlay so it
+   rotates with the wedge. */
+.wol-wedge.jackpot path {
+  stroke: #f2c14e;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px rgba(242, 193, 78, 0.75));
+}
+
+.wol-wedge.jackpot text {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.wol-reveal-card.jackpot {
+  border-color: #f2c14e;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75), 0 0 42px rgba(242, 193, 78, 0.45);
+}
+
+.wol-reveal-jackpot {
+  margin: 0 0 0.15rem;
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: #f2c14e;
+  text-transform: uppercase;
+}
+
+/* The builder's star: off is a hint, on is a statement. */
+.wol-b-row .jp { color: rgba(160, 160, 160, 0.5); }
+.wol-b-row .jp:hover { color: #f2c14e; }
+.wol-b-row .jp.on {
+  color: #f2c14e;
+  background: rgba(242, 193, 78, 0.18);
+}
+
+/* ---- Undo ---- */
+
+/* Deliberately quiet: it lives on the card as a way back, not as one of the
+   card's headline facts. */
+.wol-undo {
+  margin-top: 0.4rem;
+  width: auto;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.76rem;
+  opacity: 0.75;
+  border-radius: 4px;
+}
+
+.wol-undo:hover { opacity: 1; }

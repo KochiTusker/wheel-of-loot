@@ -57,6 +57,7 @@ export class WheelBuilder extends ApplicationV2 {
       refresh: WheelBuilder.#onRefresh,
       expand: WheelBuilder.#onExpand,
       variants: WheelBuilder.#onVariants,
+      jackpot: WheelBuilder.#onJackpot,
       rerollOne: WheelBuilder.#onRerollOne,
       rollWheel: WheelBuilder.#onRollWheel,
       fill: WheelBuilder.#onFill,
@@ -130,6 +131,7 @@ export class WheelBuilder extends ApplicationV2 {
         img: result.img,
         weight,
         odds: clampOdds(result.getFlag?.(MODULE_ID, "odds") ?? DEFAULT_ODDS),
+        jackpot: result.getFlag?.(MODULE_ID, "jackpot") === true,
         rarity,
         missing,
         source,
@@ -465,6 +467,7 @@ export class WheelBuilder extends ApplicationV2 {
       img: row.img,
       weight,
       odds: DEFAULT_ODDS,
+      jackpot: false,
       rarity: row.rarity ?? null,
       source: row.source ?? "",
       profile: row.profile ?? "single",
@@ -572,6 +575,10 @@ export class WheelBuilder extends ApplicationV2 {
           <span class="pct">%</span>
         </span>
         <span class="chance" data-role="chance-${i}"></span>
+        <button type="button" class="jp${e.jackpot ? " on" : ""}" data-action="jackpot" data-index="${i}"
+          data-tooltip="${t("Builder.JackpotHint")}">
+          <i class="fa-solid fa-star"></i>
+        </button>
         <button type="button" class="rr" data-action="rerollOne" data-index="${i}"
           data-tooltip="${t("Builder.RerollHint")}"${e.isCoin ? " disabled" : ""}>
           <i class="fa-solid fa-dice-d20"></i>
@@ -676,6 +683,7 @@ export class WheelBuilder extends ApplicationV2 {
       img: "icons/commodities/currency/coin-engraved-jolly-roger-gold.webp",
       weight: 1,
       odds: DEFAULT_ODDS,
+      jackpot: false,
       rarity: null,
       source: "",
       profile: "single",
@@ -720,6 +728,21 @@ export class WheelBuilder extends ApplicationV2 {
    * wheel is nearly right and one prize is wrong for the party. Holding the
    * slot count steady means the odds you tuned survive the swap.
    */
+  /**
+   * Mark the wedge the table is really hoping for.
+   *
+   * Only one at a time: a wheel with four grand prizes has no grand prize, and
+   * the flourish on landing only means anything if it is rare.
+   */
+  static #onJackpot(event, target) {
+    const i = Number(target.dataset.index);
+    const wasOn = this.entries[i].jackpot === true;
+    this.entries.forEach(e => { e.jackpot = false; });
+    this.entries[i].jackpot = !wasOn;
+    this.#markDirty(this.element);
+    this.#renderEntries(this.element);
+  }
+
   static #onRerollOne(event, target) {
     const i = Number(target.dataset.index);
     const entry = this.entries[i];
@@ -1058,7 +1081,7 @@ export class WheelBuilder extends ApplicationV2 {
       cursor += e.weight;
       const base = {
         name: e.name, img: e.img, weight: e.weight, range,
-        flags: {[MODULE_ID]: {odds: clampOdds(e.odds ?? DEFAULT_ODDS)}}
+        flags: {[MODULE_ID]: {odds: clampOdds(e.odds ?? DEFAULT_ODDS), jackpot: e.jackpot === true}}
       };
       return e.uuid
         ? {...base, type: CONST.TABLE_RESULT_TYPES.DOCUMENT, documentUuid: e.uuid}
