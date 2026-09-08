@@ -18,7 +18,8 @@ import {installSettingsStub, installWorldStub} from "./harness.mjs";
 
 import {
   clampSlots, disperseSlots, labelBudget, labelFontSize, MAX_SLOTS, MIN_SLOTS,
-  mulberry32, paletteCycle, sliceColours, SLOT_PRESETS, slotCount, validateTable, WHEEL_PALETTE
+  mulberry32, paletteCycle, readStock, sliceColours, SLOT_PRESETS, slotCount, validateTable,
+  WHEEL_PALETTE
 } from "../scripts/core/wheel-data.js";
 import {distributeSlots, drawDistinct, planWheel, rarityWeight} from "../scripts/core/wheel-plan.js";
 import {GENERIC_ADAPTER} from "../scripts/systems/adapter.js";
@@ -33,7 +34,7 @@ import {
 } from "../scripts/core/dedupe.js";
 import {
   DEFAULT_ODDS, MAX_ODDS, MIN_ODDS, clampOdds, effectiveWeights, isUnweighted,
-  pickEntry, slicesOf, totalWeight, trueChances
+  isExhausted, pickEntry, slicesOf, totalWeight, trueChances
 } from "../scripts/core/odds.js";
 import {
   OVERRIDABLE, PALETTES, allowGift, allowRefuse, autoClose, chatCardMode, coinDenomination, coinPresets,
@@ -916,6 +917,73 @@ check("every overridable setting is actually registered", () => {
   const unregistered = OVERRIDABLE.filter(key => !definitions.has(key));
   // A wheel cannot override something the world never declared.
   eq(unregistered, [], "no overridable key is missing a registration");
+});
+
+
+/* -------------------------------------------- */
+/*  Limited stock                                */
+/* -------------------------------------------- */
+
+check("a claimed wedge is drawn but never rolled", () => {
+  const entries = [
+    {count: 4, odds: 100, depleted: true},
+    {count: 60, odds: 100}
+  ];
+  eq(effectiveWeights(entries), [0, 6000], "the claimed wedge carries no weight");
+  eq(trueChances(entries), [0, 1], "and cannot come up");
+  // It keeps its slices, so the wheel does not need relaying out.
+  eq(entries[0].count, 4, "still four slices wide");
+});
+
+check("a wheel is exhausted only when nothing at all can be won", () => {
+  assert(!isExhausted([{count: 4, odds: 100}]), "one live wedge is not exhausted");
+  assert(!isExhausted([{count: 4, odds: 100, depleted: true}, {count: 1, odds: 100}]),
+    "one live wedge among claimed ones is not exhausted");
+  assert(isExhausted([{count: 4, odds: 100, depleted: true}]), "every wedge claimed is exhausted");
+  assert(isExhausted([{count: 4, odds: 100, depleted: true}, {count: 2, odds: 100, depleted: true}]));
+  // An empty wheel is a different fault, reported elsewhere; do not call it
+  // exhausted, or a broken table would read as a fully looted one.
+  assert(!isExhausted([]), "no wedges at all is not exhaustion");
+});
+
+check("the roll never lands on a claimed wedge", () => {
+  const entries = [
+    {count: 8, odds: 100, depleted: true},
+    {count: 8, odds: 100},
+    {count: 8, odds: 100, depleted: true}
+  ];
+  const weights = effectiveWeights(entries);
+  const total = weights.reduce((a, b) => a + b, 0);
+  // Walk every face: only the live wedge may ever be selected.
+  const seen = new Set();
+  for (let roll = 1; roll <= total; roll++) seen.add(pickEntry(weights, roll));
+  eq([...seen], [1], "only the one live entry is reachable");
+});
+
+check("stock reads back from a flag, and zero survives", () => {
+  const flagged = value => ({getFlag: (m, k) => (k === "stock" ? value : undefined)});
+  eq(readStock(flagged(undefined)), null, "absent means an endless supply");
+  eq(readStock(flagged(null)), null);
+  eq(readStock(flagged("")), null);
+  // Zero is a claimed wedge, not an unlimited one — the distinction is the
+  // whole feature, and treating it as falsy would silently restock the hoard.
+  eq(readStock(flagged(0)), 0, "zero is a real value");
+  eq(readStock(flagged(3)), 3);
+  eq(readStock(flagged("3")), 3);
+  eq(readStock(flagged(-2)), 0, "never negative");
+  eq(readStock(flagged(2.7)), 2, "whole prizes only");
+  eq(readStock(flagged("nonsense")), null, "junk falls back to endless");
+  eq(readStock({}), null, "a result with no getFlag is endless");
+});
+
+check("weighting and stock compose without surprising each other", () => {
+  // A weighted-down jackpot that is also limited: still rare while it lasts,
+  // then gone entirely.
+  const live = [{count: 3, odds: 25}, {count: 61, odds: 100}];
+  const spent = [{count: 3, odds: 25, depleted: true}, {count: 61, odds: 100}];
+  assert(trueChances(live)[0] > 0, "winnable while stocked");
+  eq(trueChances(spent)[0], 0, "unwinnable once claimed");
+  eq(trueChances(spent)[1], 1, "and the rest of the wheel takes up the slack");
 });
 
 /* -------------------------------------------- */

@@ -160,6 +160,22 @@ export function labelFontSize(total) {
   return 13;
 }
 
+/**
+ * A wedge's remaining stock, or null for an endless one.
+ *
+ * Zero is meaningful and must survive: it is a wedge that has been claimed, not
+ * one with no limit, so the check is for null rather than for falsiness.
+ *
+ * @param {TableResult} result
+ * @returns {?number}
+ */
+export function readStock(result) {
+  const raw = result.getFlag?.(MODULE_ID, "stock");
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) ? Math.max(0, n) : null;
+}
+
 /* -------------------------------------------- */
 /*  Reading the table                           */
 /* -------------------------------------------- */
@@ -225,10 +241,16 @@ export async function buildEntries(table) {
       rarity,
       isCoin: !!coin,
       count,
+      depleted: readStock(result) === 0,
       // How likely this wedge really is, independent of how wide it looks.
       odds: clampOdds(result.getFlag?.(MODULE_ID, "odds") ?? DEFAULT_ODDS),
       // The one wedge the table is really hoping for, if the GM named one.
       jackpot: result.getFlag?.(MODULE_ID, "jackpot") === true,
+      // How many are left to give out. Null means an endless supply, which is
+      // what every wedge was before this existed.
+      stock: readStock(result),
+      // Needed to write a decremented stock back to the right result.
+      resultId: result.id ?? null,
       ink: coin ? COIN_COLOUR : (rarity ? adapter.rarityColour(rarity) : NEUTRAL_COLOUR)
     });
   }

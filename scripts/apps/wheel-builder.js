@@ -16,7 +16,9 @@ import {
   buildCatalogue, cachedCatalogue, catalogueRow, cataloguePacks, catalogueSources,
   catalogueTypes, invalidateCatalogue
 } from "../core/catalogue.js";
-import {clampSlots, MAX_SLOTS, MIN_SLOTS, richText, SLOT_PRESETS, slotCount} from "../core/wheel-data.js";
+import {
+  clampSlots, MAX_SLOTS, MIN_SLOTS, readStock, richText, SLOT_PRESETS, slotCount
+} from "../core/wheel-data.js";
 import {DEDUPE_MODES, foldDuplicates} from "../core/dedupe.js";
 import {DEFAULT_ODDS, MAX_ODDS, MIN_ODDS, clampOdds, isUnweighted, trueChances} from "../core/odds.js";
 import {coinDenomination, coinPresets, defaultSlots} from "../core/settings.js";
@@ -136,6 +138,7 @@ export class WheelBuilder extends ApplicationV2 {
         weight,
         odds: clampOdds(result.getFlag?.(MODULE_ID, "odds") ?? DEFAULT_ODDS),
         jackpot: result.getFlag?.(MODULE_ID, "jackpot") === true,
+        stock: readStock(result),
         rarity,
         missing,
         source,
@@ -368,6 +371,17 @@ export class WheelBuilder extends ApplicationV2 {
         this.entries[index].weight = Math.max(1, Math.round(Number(weightInput.value) || 1));
       }
 
+      const stockInput = ev.target.closest("input[data-stock]");
+      if (stockInput) {
+        // Blank means an endless supply, which is what a wedge was before
+        // stock existed; zero means claimed, and must not read as blank.
+        const raw = stockInput.value.trim();
+        this.entries[index].stock = raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0));
+        const box = stockInput.closest(".stock");
+        box?.classList.toggle("limited", this.entries[index].stock != null);
+        box?.classList.toggle("out", this.entries[index].stock === 0);
+      }
+
       const oddsInput = ev.target.closest("input[data-odds]");
       if (oddsInput) {
         this.entries[index].odds = clampOdds(oddsInput.value);
@@ -375,7 +389,7 @@ export class WheelBuilder extends ApplicationV2 {
         oddsInput.closest(".odds")?.classList.toggle("bent", this.entries[index].odds !== DEFAULT_ODDS);
       }
 
-      if (!weightInput && !oddsInput) return;
+      if (!weightInput && !oddsInput && !stockInput) return;
       this.#markDirty(content);
       this.#renderTally(content);
       this.#renderChances(content);
@@ -499,6 +513,7 @@ export class WheelBuilder extends ApplicationV2 {
       weight,
       odds: DEFAULT_ODDS,
       jackpot: false,
+      stock: null,
       rarity: row.rarity ?? null,
       source: row.source ?? "",
       profile: row.profile ?? "single",
@@ -605,6 +620,11 @@ export class WheelBuilder extends ApplicationV2 {
             value="${e.odds ?? DEFAULT_ODDS}" data-odds aria-label="${t("Builder.Odds")}">
           <span class="pct">%</span>
         </span>
+        <span class="stock${e.stock != null ? " limited" : ""}${e.stock === 0 ? " out" : ""}"
+          data-tooltip="${t("Builder.StockHint")}">
+          <input type="number" min="0" step="1" placeholder="∞"
+            value="${e.stock ?? ""}" data-stock aria-label="${t("Builder.Stock")}">
+        </span>
         <span class="chance" data-role="chance-${i}"></span>
         <button type="button" class="jp${e.jackpot ? " on" : ""}" data-action="jackpot" data-index="${i}"
           data-tooltip="${t("Builder.JackpotHint")}">
@@ -631,7 +651,9 @@ export class WheelBuilder extends ApplicationV2 {
    * separately from the rows because it changes on every slot and odds edit.
    */
   #renderChances(content) {
-    const chances = trueChances(this.entries.map(e => ({count: e.weight, odds: e.odds})));
+    const chances = trueChances(this.entries.map(e => ({
+      count: e.weight, odds: e.odds, depleted: e.stock === 0
+    })));
     this.entries.forEach((entry, i) => {
       const cell = content.querySelector(`[data-role="chance-${i}"]`);
       if (!cell) return;
@@ -715,6 +737,7 @@ export class WheelBuilder extends ApplicationV2 {
       weight: 1,
       odds: DEFAULT_ODDS,
       jackpot: false,
+      stock: null,
       rarity: null,
       source: "",
       profile: "single",
@@ -1124,7 +1147,11 @@ export class WheelBuilder extends ApplicationV2 {
       cursor += e.weight;
       const base = {
         name: e.name, img: e.img, weight: e.weight, range,
-        flags: {[MODULE_ID]: {odds: clampOdds(e.odds ?? DEFAULT_ODDS), jackpot: e.jackpot === true}}
+        flags: {[MODULE_ID]: {
+          odds: clampOdds(e.odds ?? DEFAULT_ODDS),
+          jackpot: e.jackpot === true,
+          stock: e.stock ?? null
+        }}
       };
       return e.uuid
         ? {...base, type: CONST.TABLE_RESULT_TYPES.DOCUMENT, documentUuid: e.uuid}

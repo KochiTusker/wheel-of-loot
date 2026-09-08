@@ -242,6 +242,27 @@ export class LootWheel {
     wheel.resetToIdle();
   }
 
+  /**
+   * Strike a wedge out once its last copy has been taken.
+   *
+   * It stays on the rim rather than vanishing: a hoard visibly emptying as the
+   * party loots it is the point, and removing wedges mid-session would mean
+   * relaying out the wheel under everyone's eyes.
+   */
+  static deplete({sessionId, name} = {}) {
+    const wheel = LootWheel.current;
+    if (!wheel || wheel.config.sessionId !== sessionId) return;
+    wheel.markDepleted(name);
+  }
+
+  /** Nothing left to win; close with a word rather than in silence. */
+  static exhaust(sessionId) {
+    const wheel = LootWheel.current;
+    if (!wheel || wheel.config.sessionId !== sessionId) return;
+    ui.notifications.info(t("Wheel.Exhausted"));
+    wheel.destroy();
+  }
+
   static dismiss(sessionId) {
     const wheel = LootWheel.current;
     if (!wheel || wheel.config.sessionId !== sessionId) return;
@@ -264,6 +285,26 @@ export class LootWheel {
     const rotor = this.root?.querySelector(".wol-rotor");
     if (rotor) rotor.style.transition = "none";
     this.#renderActions();
+  }
+
+  /**
+   * Mark every slice belonging to a named entry as claimed.
+   *
+   * Matched by name because that is what the broadcast carries, and two wedges
+   * sharing a name are already flagged as a mistake in the builder.
+   *
+   * @param {string} name
+   */
+  markDepleted(name) {
+    const {entries, layout} = this.config;
+    const index = entries.findIndex(e => e.name === name);
+    if (index < 0) return;
+    entries[index].depleted = true;
+    layout.forEach((entryIndex, slice) => {
+      if (entryIndex !== index) return;
+      this.root?.querySelectorAll(`.wol-wedge[data-entry="${index}"]`)
+        .forEach(g => g.classList.add("claimed"));
+    });
   }
 
   /** Re-render the spin affordance after the ledger changes. */
@@ -360,7 +401,8 @@ export class LootWheel {
       const style = `fill:${fill};stroke:${halo};text-anchor:${anchor};font-size:${fontSize}px`;
 
       return `
-        <g class="wol-wedge${entry.jackpot ? " jackpot" : ""}">
+        <g class="wol-wedge${entry.jackpot ? " jackpot" : ""}${entry.depleted ? " claimed" : ""}"
+          data-entry="${entryIndex}">
           <path d="${wedgePath(c, c, outer, inner, start, sweep)}" style="fill:${background}" />
           <text x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" style="${style}"
             transform="rotate(${rotate.toFixed(2)} ${p.x.toFixed(1)} ${p.y.toFixed(1)})"

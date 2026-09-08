@@ -11,6 +11,7 @@
 import {MODULE_ID, t} from "./core/constants.js";
 import {getCredits, setSpins} from "./core/ledger.js";
 import {S, registerSettings, resolveWheelConfig} from "./core/settings.js";
+import {isExhausted} from "./core/odds.js";
 import {auditTable, buildEntries, describeFault, disperseSlots, SLOT_PRESETS, validateTable} from "./core/wheel-data.js";
 import {callOwner, registerSocket, socketReady} from "./core/socket.js";
 import {cancelWheel, registerSession, requestSpin, resolveWheel, sessions, startSession} from "./core/session.js";
@@ -66,6 +67,8 @@ const clientHandlers = {
   openWheel: gmOnly(openWheel),
   playSpin: gmOnly(payload => LootWheel.spinTo(payload)),
   rearmWheel: gmOnly(sessionId => LootWheel.rearm(sessionId)),
+  depleteWedge: gmOnly(payload => LootWheel.deplete(payload)),
+  exhaustWheel: gmOnly(sessionId => LootWheel.exhaust(sessionId)),
   closeWheel: gmOnly(sessionId => LootWheel.dismiss(sessionId)),
   notify: gmOnly(message => ui.notifications.warn(message))
 };
@@ -122,6 +125,13 @@ export async function present({table, allocations} = {}) {
   if (allocations) await setSpins.call({socketdata: {userId: game.user.id}}, allocations);
 
   const {entries, slots} = await buildEntries(doc);
+
+  // Everything already claimed is dead weight on the rim. Presenting a wheel
+  // whose every wedge is spent would put an unspinnable thing on five screens.
+  if (isExhausted(entries)) {
+    ui.notifications.warn(t("Notify.WheelExhausted", {name: doc.name}));
+    return null;
+  }
   const seed = Math.floor(Math.random() * 0xFFFFFFFF);
   const layout = disperseSlots(entries, slots, seed);
 

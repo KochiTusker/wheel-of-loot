@@ -1126,3 +1126,41 @@
 }
 
 .wol-undo:hover { opacity: 1; }
+
+/* ---- Claimed wedges ---- */
+
+/* A spent wedge keeps its place on the rim: the hoard visibly emptying as the
+   party loots it is the point, and removing wedges mid-session would mean
+   relaying out the wheel under everyone's eyes. */
+.wol-wedge.claimed path {
+  opacity: 0.32;
+}
+
+.wol-wedge.claimed text {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+/* ---- Builder: stock ---- */
+
+.wol-b-row .stock { flex: 0 0 auto; }
+
+.wol-b-row .stock input {
+  width: 3.2rem;
+  height: 22px;
+  text-align: center;
+  font-size: 0.78rem;
+}
+
+.wol-b-row .stock.limited input {
+  color: #4a9fd8;
+  border-color: rgba(74, 159, 216, 0.6);
+  font-weight: 700;
+}
+
+.wol-b-row .stock.out input {
+  color: #c0563a;
+  border-color: rgba(192, 86, 58, 0.7);
+}
+
+.wol-b-row .stock.out ~ .chance { text-decoration: line-through; opacity: 0.4; }

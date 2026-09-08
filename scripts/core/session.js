@@ -25,7 +25,7 @@
 import {MODULE_ID, t} from "./constants.js";
 import {creditsFor, debit, getCredits, totalCredits, writeCredits} from "./ledger.js";
 import {autoClose, chatCardMode, gmNeedsCredit, spinDuration, wheelSpeaker} from "./settings.js";
-import {effectiveWeights, isUnweighted, pickEntry, slicesOf, totalWeight} from "./odds.js";
+import {effectiveWeights, isExhausted, isUnweighted, pickEntry, slicesOf, totalWeight} from "./odds.js";
 import {recordGrant} from "./undo.js";
 import {systemAdapter} from "../systems/adapter.js";
 import {callOwner, socket, tell} from "./socket.js";
@@ -344,6 +344,10 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
     });
   }
 
+  // A limited wedge is spent when it is actually taken, not when it is landed
+  // on: a refused prize is still on offer to the next spinner.
+  if (accepted && (granted || coins)) await spendStock(session, entry);
+
   // The prize has already changed hands, so a failure to *announce* it must not
   // strand the wheel in the resolving phase. Report and carry on.
   try {
@@ -355,11 +359,56 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
   // Re-arm for whoever still holds credits; close once the wheel is spent.
   await releaseSpin(session);
 
-  if (totalCredits() > 0 || !(session.wheel?.rules?.autoClose ?? autoClose())) {
+  // A wheel with nothing left to give is finished regardless of who still
+  // holds a spin — re-arming it would offer a choice that cannot be made.
+  if (isExhausted(session.entries)) {
+    await socket().executeForEveryone("exhaustWheel", sessionId);
+    sessions.delete(sessionId);
+  } else if (totalCredits() > 0 || !(session.wheel?.rules?.autoClose ?? autoClose())) {
     await socket().executeForEveryone("rearmWheel", sessionId);
   } else {
     sessions.delete(sessionId);
     await socket().executeForEveryone("closeWheel", sessionId);
+  }
+}
+
+/**
+ * Take one off a limited wedge, and retire it when it runs out.
+ *
+ * Written back to the table as well as to the live session, because a hoard
+ * that refills itself when the wheel is closed and reopened is not a hoard. The
+ * table is the record; the session is only this evening's copy of it.
+ *
+ * Failure is reported but never blocks: the player already has the prize, and
+ * an over-generous wheel is a far smaller problem than a lost item.
+ *
+ * @param {object} session
+ * @param {object} entry
+ */
+async function spendStock(session, entry) {
+  if (entry.stock == null) return;
+
+  const left = Math.max(0, entry.stock - 1);
+  entry.stock = left;
+  entry.depleted = left === 0;
+
+  try {
+    const table = await fromUuid(session.tableUuid);
+    const result = entry.resultId ? table?.results?.get(entry.resultId) : null;
+    if (result) await result.setFlag(MODULE_ID, "stock", left);
+  } catch (err) {
+    console.error("Wheel of Loot | could not write the remaining stock back", err);
+  }
+
+  if (entry.depleted) {
+    try {
+      await socket().executeForEveryone("depleteWedge", {
+        sessionId: session.sessionId,
+        name: entry.name
+      });
+    } catch (err) {
+      console.error("Wheel of Loot | could not announce the depleted wedge", err);
+    }
   }
 }
 

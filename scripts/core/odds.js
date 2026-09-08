@@ -49,7 +49,25 @@ export function clampOdds(value) {
  * @returns {number[]}
  */
 export function effectiveWeights(entries) {
-  return entries.map(e => Math.max(0, (e.count ?? 0)) * clampOdds(e.odds ?? DEFAULT_ODDS));
+  return entries.map(e => {
+    // A wedge whose stock has run out keeps its place on the rim — the hoard
+    // visibly emptying is the point — but it can no longer be landed on.
+    if (e.depleted) return 0;
+    return Math.max(0, e.count ?? 0) * clampOdds(e.odds ?? DEFAULT_ODDS);
+  });
+}
+
+/**
+ * True when nothing on the wheel can still be won.
+ *
+ * Distinct from "the wheel is broken": every wedge may be perfectly valid and
+ * simply claimed. The caller closes the wheel rather than reporting a fault.
+ *
+ * @param {object[]} entries
+ * @returns {boolean}
+ */
+export function isExhausted(entries) {
+  return entries.length > 0 && totalWeight(entries) <= 0;
 }
 
 /** Sum of the effective weights; the number of faces the spin rolls over. */
