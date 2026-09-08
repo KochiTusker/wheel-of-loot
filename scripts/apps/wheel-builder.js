@@ -39,6 +39,27 @@ const USE_LABEL = {
 const CATALOGUE_CAP = 300;
 
 /**
+ * The tooltip for a row's name cell.
+ *
+ * The full name always leads it. The column is `text-overflow: ellipsis` in
+ * both lists and there is no window width at which a long item name reliably
+ * fits — "Dust of Sneezing and Choking" does not survive any sensible layout —
+ * so hovering has to be a reliable way to read the whole thing rather than a
+ * lucky one. Everything after the name is context the row has no room for.
+ *
+ * Empty parts are dropped rather than left as stray separators, and the whole
+ * thing is escaped once here so no caller can forget.
+ *
+ * @param {...(string|null|undefined|false)} parts
+ * @returns {string} A ` data-tooltip="…"` attribute, or "" if there is nothing
+ *                   worth saying.
+ */
+function nameTooltip(...parts) {
+  const text = parts.filter(Boolean).map(String).join(" · ");
+  return text ? ` data-tooltip="${foundry.utils.escapeHTML(text)}"` : "";
+}
+
+/**
  * Art for a prize the GM has not chosen art for.
  *
  * One of Foundry's own bundled icons rather than anything drawn for this
@@ -583,8 +604,14 @@ export class WheelBuilder extends ApplicationV2 {
       return `
       <li class="wol-b-row${onWheel ? " on-wheel" : ""}" draggable="true" data-uuid="${c.uuid}">
         <img src="${foundry.utils.escapeHTML(c.img || "icons/svg/item-bag.svg")}" alt="">
-        <span class="nm"${onWheel ? ` data-tooltip="${t("Builder.AlreadyOnWheel")}"` : ""
-          }>${foundry.utils.escapeHTML(c.name)}</span>
+        <span class="nm"${nameTooltip(
+          c.name,
+          c.source,
+          // `source` falls back to the pack's own name, so only say the pack
+          // when it adds something the source line has not already said.
+          c.packLabel === c.source ? null : c.packLabel,
+          onWheel && t("Builder.AlreadyOnWheel")
+        )}>${foundry.utils.escapeHTML(c.name)}</span>
         <span class="src" data-tooltip="${foundry.utils.escapeHTML(c.packLabel)}">${
           foundry.utils.escapeHTML(c.source || "—")}</span>
         ${c.group?.length > 1
@@ -649,12 +676,13 @@ export class WheelBuilder extends ApplicationV2 {
       // nothing at the default window size. They are browsing facts, already on
       // show in the catalogue where the choice is made, so on the wheel they
       // become a tooltip on the name and the space goes back to the name.
-      // The name leads the tooltip as well as the row: a long one ellipsises at
-      // any window size, and hovering is then the only way to read it.
-      const meta = [e.name];
-      if (e.uuid && e.source) meta.push(e.source);
-      if (e.uuid && adapter.tracksUses) meta.push(t(use.key));
-      const tip = ` data-tooltip="${foundry.utils.escapeHTML(meta.join(" · "))}"`;
+      const tip = nameTooltip(
+        e.name,
+        e.uuid && e.source,
+        e.uuid && adapter.tracksUses && t(use.key),
+        e.custom && t("Builder.CustomTag"),
+        e.missing && t("Builder.MissingItem")
+      );
       return `
       <li class="wol-b-row entry${e.isCoin ? " coin" : ""}${e.custom ? " custom" : ""}${
         e.missing ? " missing" : ""}${clash ? " clash" : ""}" data-index="${i}">

@@ -91,6 +91,12 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Hovering a name now gives you the whole name.** Both lists ellipsise long
+  item names at every window width — no layout fits "Dust of Sneezing and
+  Choking" — so the tooltip leads with the full name and then adds the context
+  the row has no room for: source book, use profile, which pack, and whether it
+  is already on the wheel. The catalogue side previously had no name tooltip at
+  all.
 - **Prize names were invisible in the builder.** The "On the wheel" row carried
   so many fixed-width columns that the name — the only thing saying what a
   wedge *is* — was squeezed to zero pixels at the default window size, leaving
