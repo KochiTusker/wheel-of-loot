@@ -508,24 +508,23 @@ export class LootWheel {
 
     this.stopTicks = tickTrack(this.duration);
 
-    // Stop a hair short, then creep the last fraction of a degree home. The
-    // wheel is already decelerating; this extra beat is what turns "it stopped"
-    // into "it *nearly* went past" — the moment the table actually reacts to.
-    const settleMs = Math.min(700, Math.max(320, this.duration * 0.12));
-    const mainMs = this.duration - settleMs;
-    const shortOf = sweep * 0.34;
-
-    rotor.style.transition = `transform ${mainMs}ms cubic-bezier(0.10, 0.62, 0.08, 1)`;
+    // One continuous motion, all the way to rest.
+    //
+    // An earlier version stopped a third of a slice short and then crept the
+    // rest of the way in a second transition. It produced the near-miss beat,
+    // but it produced it by *moving the wheel again after it had stopped* —
+    // which is indistinguishable from someone nudging the result, and a prize
+    // wheel that looks adjusted is worse than one with no drama at all.
+    //
+    // The tension comes from the easing instead. The second control point sits
+    // hard against the end, so the last couple of degrees take an appreciable
+    // share of the spin and the pointer visibly crawls toward the boundary —
+    // the same feeling, produced by friction rather than by a correction.
+    rotor.style.transition = `transform ${this.duration}ms cubic-bezier(0.14, 0.72, 0.02, 1)`;
     // Force a reflow so the transition applies from the current angle rather
     // than being collapsed into the same style recalculation.
     void rotor.getBoundingClientRect();
-    rotor.style.transform = `rotate(${(final - shortOf).toFixed(3)}deg)`;
-
-    window.setTimeout(() => {
-      if (this.state !== "spinning") return;
-      rotor.style.transition = `transform ${settleMs}ms cubic-bezier(0.16, 0.9, 0.24, 1)`;
-      rotor.style.transform = `rotate(${final.toFixed(3)}deg)`;
-    }, mainMs + 20);
+    rotor.style.transform = `rotate(${final.toFixed(3)}deg)`;
 
     window.setTimeout(() => this.#onLanded(), this.duration + 60);
   }

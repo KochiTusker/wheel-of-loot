@@ -25,8 +25,10 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Jackpot wedges.** Mark one wedge as the grand prize: a gold edge on the
   wheel so it can be tracked while spinning, a bigger confetti burst and a
   banner on the reveal.
-- **A near-miss beat.** The wheel now stops a third of a slice short and creeps
-  home, which is what turns "it stopped" into "it nearly went past".
+- **A near-miss beat**, produced by the easing curve rather than by a second
+  movement. The last tenth of the spin covers about a fifth of a slice, so the
+  pointer visibly crawls toward the boundary — one continuous motion, because a
+  wheel that moves again after stopping looks adjusted.
 - **Per-wheel appearance and rules.** Any wheel can override the world settings:
   its own palette, hub, speaker, confetti, backdrop, spin duration and rotations,
   win sound, and its own rules for gifting, refusing, whether the GM needs a
