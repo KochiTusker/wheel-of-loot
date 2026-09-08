@@ -60,6 +60,22 @@ export function describeLastGrant() {
 }
 
 /**
+ * Whether an item is the one this grant record describes.
+ *
+ * @param {Item} item
+ * @param {object} record
+ * @returns {boolean}
+ */
+export function isOurGrant(item, record) {
+  const uuid = item.getFlag?.(MODULE_ID, "wonFromUuid");
+  // Both sides know the uuid: the strong check, and rename-proof.
+  if (uuid && record.tableUuid) return uuid === record.tableUuid;
+  // Granted before the uuid was stamped. Fall back to the name it was given at
+  // the time, which is exactly as good as the check has always been.
+  return item.getFlag?.(MODULE_ID, "wonFrom") === record.tableName;
+}
+
+/**
  * Reverse the most recent grant. GM only.
  *
  * @returns {Promise<{ok: boolean, reason?: string}>}
@@ -77,12 +93,15 @@ export async function undoLastGrant() {
     if (record.itemId) {
       const item = actor.items.get(record.itemId);
       if (!item) return {ok: false, reason: "itemGone"};
-      // Never delete on the id alone. The provenance flag is what proves this
-      // is the document the wheel created and not something that has since
-      // taken its place.
-      if (item.getFlag(MODULE_ID, "wonFrom") !== record.tableName) {
-        return {ok: false, reason: "notOurs"};
-      }
+      // Never delete on the id alone: an id can be reused, and the point of the
+      // check is to be sure this is the document the wheel created rather than
+      // whatever has since taken its place.
+      //
+      // Matched on the table's uuid, not its name. Renaming a wheel between the
+      // win and the undo is an ordinary thing to do and used to make the prize
+      // unreturnable. The name is still accepted for items granted before the
+      // uuid was stamped, so an older win is not stranded.
+      if (!isOurGrant(item, record)) return {ok: false, reason: "notOurs"};
       await item.delete();
     } else if (record.coins) {
       const adapter = systemAdapter();

@@ -75,6 +75,35 @@ export function listWheels() {
     .sort((a, b) => a.folder.localeCompare(b.folder) || a.name.localeCompare(b.name));
 }
 
+/**
+ * The shape of a wheel, without resolving anything.
+ *
+ * Enough to draw it small: how many slices each wedge owns, and whether it has
+ * been claimed. Deliberately does *not* go through `buildEntries`, which
+ * resolves every wedge's document for its name, art and rules text — a
+ * thumbnail draws none of that, and a manager listing forty wheels would
+ * otherwise resolve thousands of documents to draw coloured arcs.
+ *
+ * @param {RollTable} table
+ * @returns {{count: number, depleted: boolean}[]}
+ */
+export function wheelShape(table) {
+  const shape = [];
+  const ordered = [...table.results].sort((a, b) => (a.range?.[0] ?? 0) - (b.range?.[0] ?? 0));
+  for (const result of ordered) {
+    const lo = result.range?.[0] ?? 0;
+    const hi = result.range?.[1] ?? 0;
+    const count = lo && hi ? (hi - lo) + 1 : 0;
+    if (!count) continue;
+    const stock = result.getFlag?.(MODULE_ID, "stock");
+    shape.push({
+      count,
+      depleted: stock !== undefined && stock !== null && stock !== "" && Number(stock) <= 0
+    });
+  }
+  return shape;
+}
+
 /** How many wedges carry a stock count at all. */
 function countLimited(table) {
   let n = 0;

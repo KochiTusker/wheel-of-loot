@@ -13,8 +13,8 @@
  */
 
 import {t} from "../core/constants.js";
-import {duplicateWheel, isWheel, listWheels, restock} from "../core/wheels.js";
-import {buildEntries, describeFault, disperseSlots, sliceColours} from "../core/wheel-data.js";
+import {duplicateWheel, isWheel, listWheels, restock, wheelShape} from "../core/wheels.js";
+import {describeFault, disperseSlots, sliceColours} from "../core/wheel-data.js";
 import {palette} from "../core/settings.js";
 
 const {ApplicationV2, DialogV2} = foundry.applications.api;
@@ -67,7 +67,7 @@ export class WheelManager extends ApplicationV2 {
     const root = document.createElement("div");
     root.className = "wol-manager-body";
 
-    const rows = await Promise.all(wheels.map(async w => {
+    const rows = wheels.map(w => {
       const tags = [
         w.broken ? `<span class="tag bad" data-tooltip="${esc(describeFault(w.faults[0]))}">
           <i class="fa-solid fa-triangle-exclamation"></i> ${t("Manager.Broken")}</span>` : "",
@@ -78,7 +78,7 @@ export class WheelManager extends ApplicationV2 {
 
       return `
         <li class="wol-m-row" data-uuid="${esc(w.uuid)}">
-          <div class="thumb">${await this.#thumbnail(w.table)}</div>
+          <div class="thumb">${this.#thumbnail(w.table)}</div>
           <div class="about">
             <p class="name">${esc(w.name)}</p>
             <p class="meta">${w.folder ? `${esc(w.folder)} · ` : ""}${
@@ -104,7 +104,7 @@ export class WheelManager extends ApplicationV2 {
               data-tooltip="${t("Manager.Delete")}"><i class="fa-solid fa-trash-can"></i></button>
           </div>
         </li>`;
-    }));
+    });
 
     root.innerHTML = `
       <header class="wol-m-head">
@@ -137,10 +137,10 @@ export class WheelManager extends ApplicationV2 {
    * recognises it. Labels are omitted — at this size they would be noise — and
    * a very busy wheel is drawn as plain bands rather than hundreds of paths.
    */
-  async #thumbnail(table) {
+  #thumbnail(table) {
     let entries;
     try {
-      ({entries} = await buildEntries(table));
+      entries = wheelShape(table);
     } catch {
       entries = [];
     }

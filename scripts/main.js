@@ -13,8 +13,11 @@ import {getCredits, setSpins} from "./core/ledger.js";
 import {S, registerSettings, resolveWheelConfig} from "./core/settings.js";
 import {isExhausted} from "./core/odds.js";
 import {auditTable, buildEntries, describeFault, disperseSlots, SLOT_PRESETS, validateTable} from "./core/wheel-data.js";
-import {callOwner, registerSocket, socketReady} from "./core/socket.js";
-import {cancelWheel, registerSession, requestSpin, resolveWheel, sessions, startSession} from "./core/session.js";
+import {callOwner, registerSocket, socket, socketReady} from "./core/socket.js";
+import {
+  cancelWheel, hasLiveSessions, registerSession, releaseAbandonedSpins, requestSpin, resolveWheel,
+  sessions, startSession
+} from "./core/session.js";
 import {LootWheel} from "./apps/wheel-app.js";
 import {WheelBuilder} from "./apps/wheel-builder.js";
 import {openLauncher, pickTable} from "./apps/launcher.js";
@@ -71,6 +74,9 @@ const clientHandlers = {
   depleteWedge: gmOnly(payload => LootWheel.deplete(payload)),
   exhaustWheel: gmOnly(sessionId => LootWheel.exhaust(sessionId)),
   closeWheel: gmOnly(sessionId => LootWheel.dismiss(sessionId)),
+  // No session id: the GM that sent this knows of no wheels at all, so whatever
+  // this client is showing cannot be served by anybody.
+  closeOrphanedWheel: gmOnly(() => LootWheel.dismissOrphan()),
   notify: gmOnly(message => ui.notifications.warn(message))
 };
 
@@ -235,6 +241,38 @@ Hooks.once("ready", async () => {
   globalThis.sbtsLootWheel = {...api, edit: build};
 
   if (game.user.isGM) await runMigration();
+
+  // A GM reload destroys the in-memory session map while every player is still
+  // looking at the wheel it described. Spinning then reports, correctly, that
+  // the wheel is gone — but nothing ever takes it off their screens.
+  //
+  // A GM that has just loaded holds no sessions by definition, so any wheel a
+  // client is showing is an orphan and can be closed. The guard matters for the
+  // case where this client is *not* freshly loaded but is re-electing itself as
+  // designated GM mid-ceremony: then it does hold a session, and must not shut
+  // its own wheel.
+  if (game.user.isGM && game.users.activeGM?.id === game.user.id && !hasLiveSessions()) {
+    await socket().executeForEveryone("closeOrphanedWheel");
+  }
+});
+
+/**
+ * A player who closes their browser mid-decision must not hold the wheel.
+ *
+ * Only the client that owns the session can free it, which is the designated
+ * GM — the same client every mutation is routed to.
+ */
+Hooks.on("userConnected", async (user, connected) => {
+  if (connected || !socketReady()) return;
+  if (game.users.activeGM?.id !== game.user.id) return;
+
+  const released = await releaseAbandonedSpins(user.id);
+  if (!released.length) return;
+
+  for (const sessionId of released) {
+    await socket().executeForEveryone("rearmWheel", sessionId);
+  }
+  ui.notifications.info(t("Notify.SpinAbandoned", {name: user.name}));
 });
 
 // The ledger lives in a world setting, so every client learns about a grant

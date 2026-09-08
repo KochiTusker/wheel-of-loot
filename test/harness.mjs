@@ -22,7 +22,12 @@ function getProperty(object, key) {
   return target;
 }
 
-globalThis.foundry ??= {utils: {getProperty}};
+/** Structural clone, as the ledger uses before handing its map out. */
+function deepClone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+globalThis.foundry ??= {utils: {getProperty, deepClone}};
 
 export {getProperty};
 

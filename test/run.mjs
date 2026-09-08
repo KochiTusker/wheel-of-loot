@@ -14,6 +14,12 @@
 // has to come first.
 import fs from "node:fs";
 
+import {
+  hasLiveSessions, refundSpin, releaseAbandonedSpins, sessions
+} from "../scripts/core/session.js";
+import {isOurGrant} from "../scripts/core/undo.js";
+import {wheelShape} from "../scripts/core/wheels.js";
+
 import {installSettingsStub, installWorldStub} from "./harness.mjs";
 
 import {
@@ -984,6 +990,293 @@ check("weighting and stock compose without surprising each other", () => {
   assert(trueChances(live)[0] > 0, "winnable while stocked");
   eq(trueChances(spent)[0], 0, "unwinnable once claimed");
   eq(trueChances(spent)[1], 1, "and the rest of the wheel takes up the slack");
+});
+
+
+/* -------------------------------------------- */
+/*  Q1 — a spinner who disappears                */
+/* -------------------------------------------- */
+
+/** Put a session into the state a wheel is in while awaiting a decision. */
+function spinningSession({spinnerId = "player", sessionId = "s1", gm = false} = {}) {
+  sessions.clear();
+  const store = new Map();
+  installSettingsStub(store);
+  // The ledger lives in a world setting; the spinner has already paid.
+  store.set("spinCredits", {player: 0, other: 2});
+  globalThis.game.users = Object.assign(
+    [{id: "player", name: "Azaroth", isGM: gm}, {id: "other", name: "Brugo", isGM: false}],
+    {get(id) { return this.find(u => u.id === id); }}
+  );
+  sessions.set(sessionId, {
+    sessionId, phase: "spinning", slice: 3, entry: {name: "Prize"},
+    currentSpinnerId: spinnerId, currentActorId: "a1", currentActorName: "Azaroth",
+    entries: [{name: "Prize", count: 64, odds: 100}], layout: new Array(64).fill(0)
+  });
+  return {store, session: sessions.get(sessionId)};
+}
+
+check("a player who leaves mid-decision frees the wheel and gets the spin back", async () => {
+  const {store, session} = spinningSession();
+  eq(session.phase, "spinning", "the wheel starts locked on their decision");
+  eq(store.get("spinCredits").player, 0, "and they have already paid for it");
+
+  const released = await releaseAbandonedSpins("player");
+
+  eq(released, ["s1"], "the session is reported as freed");
+  eq(session.phase, "idle", "the wheel is spinnable again");
+  eq(session.currentSpinnerId, null, "and holds nobody's turn");
+  eq(session.slice, null);
+  eq(store.get("spinCredits").player, 1, "the spin comes back — they never got to choose");
+  // Everyone else's ledger is untouched.
+  eq(store.get("spinCredits").other, 2);
+});
+
+check("a GM who leaves mid-decision frees the wheel but is owed nothing", async () => {
+  const {store, session} = spinningSession({gm: true});
+  const released = await releaseAbandonedSpins("player");
+  eq(released, ["s1"], "still freed");
+  eq(session.phase, "idle");
+  // A GM spins without spending, so there is nothing to refund and the ledger
+  // must not gain a credit out of thin air.
+  eq(store.get("spinCredits").player, 0, "the ledger is untouched, not credited");
+});
+
+check("somebody else leaving does not touch a live spin", async () => {
+  const {store, session} = spinningSession();
+  const released = await releaseAbandonedSpins("other");
+  eq(released, [], "nothing to free");
+  eq(session.phase, "spinning", "the spinner's turn is still theirs");
+  eq(store.get("spinCredits").player, 0, "and no credit is invented");
+});
+
+check("a wheel that is not mid-spin is left alone", async () => {
+  const {session} = spinningSession();
+  session.phase = "idle";
+  session.currentSpinnerId = null;
+  eq(await releaseAbandonedSpins("player"), [], "an idle wheel has nothing to release");
+
+  session.phase = "resolving";
+  session.currentSpinnerId = "player";
+  // Resolving means the grant is already in flight; releasing underneath it
+  // would race the thing that is about to release it properly.
+  eq(await releaseAbandonedSpins("player"), [], "a resolving wheel is left to finish");
+});
+
+check("every wheel that player was holding is freed, not just the first", async () => {
+  const {store} = spinningSession();
+  sessions.set("s2", {
+    sessionId: "s2", phase: "spinning", slice: 1, entry: {name: "Other"},
+    currentSpinnerId: "player", currentActorId: "a1", currentActorName: "Azaroth",
+    entries: [{name: "Other", count: 12, odds: 100}], layout: new Array(12).fill(0)
+  });
+  const released = await releaseAbandonedSpins("player");
+  eq(released.sort(), ["s1", "s2"]);
+  assert([...sessions.values()].every(s => s.phase === "idle"), "both wheels are free");
+  eq(store.get("spinCredits").player, 2, "one spin back per wheel they were holding");
+  sessions.clear();
+});
+
+
+/* -------------------------------------------- */
+/*  Q2 — a GM reload orphaning a wheel           */
+/* -------------------------------------------- */
+
+check("a freshly loaded GM holds no wheels, which is what makes the sweep safe", () => {
+  sessions.clear();
+  // The whole argument for closing every client's wheel rests on this: a GM
+  // that has just loaded cannot be mid-ceremony, because the map is in memory.
+  assert(!hasLiveSessions(), "an empty map reports no live wheels");
+
+  sessions.set("s1", {sessionId: "s1", phase: "idle"});
+  assert(hasLiveSessions(), "a held session is reported");
+  // The guard's real job: a designated GM re-electing itself mid-ceremony must
+  // not conclude its own live wheel is an orphan and shut it.
+  sessions.clear();
+});
+
+/** The ready-time decision, expressed as the condition main.js applies. */
+function wouldSweep({isGM, isDesignated}) {
+  return isGM && isDesignated && !hasLiveSessions();
+}
+
+check("the orphan sweep fires only for a designated GM holding nothing", () => {
+  sessions.clear();
+  assert(wouldSweep({isGM: true, isDesignated: true}), "a freshly loaded designated GM sweeps");
+  assert(!wouldSweep({isGM: false, isDesignated: false}), "a player never sweeps");
+  // A second GM is not the owner; sweeping from there would close a wheel the
+  // designated GM is still running.
+  assert(!wouldSweep({isGM: true, isDesignated: false}), "a non-designated GM does not sweep");
+
+  sessions.set("s1", {sessionId: "s1", phase: "spinning"});
+  assert(!wouldSweep({isGM: true, isDesignated: true}),
+    "a GM mid-ceremony must not close its own wheel");
+  sessions.clear();
+});
+
+
+/* -------------------------------------------- */
+/*  Q3 — a grant that could not be delivered     */
+/* -------------------------------------------- */
+
+check("refundSpin gives exactly one spin back", async () => {
+  const store = new Map();
+  installSettingsStub(store);
+  store.set("spinCredits", {player: 0, other: 3});
+
+  eq(await refundSpin("player"), true, "the ledger changed");
+  eq(store.get("spinCredits").player, 1, "one back, not two");
+  eq(store.get("spinCredits").other, 3, "nobody else is touched");
+
+  await refundSpin("player");
+  eq(store.get("spinCredits").player, 2, "and it accumulates");
+});
+
+check("refundSpin refuses to invent a recipient", async () => {
+  const store = new Map();
+  installSettingsStub(store);
+  store.set("spinCredits", {});
+  eq(await refundSpin(null), false, "no user, no refund");
+  eq(await refundSpin(undefined), false);
+  eq(store.get("spinCredits"), {}, "the ledger is untouched");
+});
+
+check("a refund reaches somebody who held nothing", async () => {
+  // The common case: they spent their last spin on the wheel that then failed.
+  const store = new Map();
+  installSettingsStub(store);
+  store.set("spinCredits", {});
+  await refundSpin("player");
+  eq(store.get("spinCredits").player, 1, "a first credit is created for them");
+});
+
+check("only a real failure earns the spin back, not an empty-handed grant", () => {
+  // The distinction the fix turns on, stated as the condition the resolve path
+  // applies. A text wedge that is not currency grants nothing *by design* — the
+  // card tells the GM to hand it over — and must not refund. Only the catch
+  // block sets `failed`.
+  const refundable = ({failed, spinnerIsGM}) => failed && !spinnerIsGM;
+
+  assert(refundable({failed: true, spinnerIsGM: false}), "a failed grant refunds a player");
+  assert(!refundable({failed: false, spinnerIsGM: false}),
+    "a deliberate hand-it-over-yourself wedge does not");
+  assert(!refundable({failed: true, spinnerIsGM: true}),
+    "a GM spent nothing, so there is nothing to give back");
+  assert(!refundable({failed: false, spinnerIsGM: true}));
+});
+
+
+/* -------------------------------------------- */
+/*  Q5 — undo surviving a rename                 */
+/* -------------------------------------------- */
+
+/** An item carrying whatever provenance flags a grant stamped on it. */
+function grantedItem({wonFrom, wonFromUuid}) {
+  const flags = {wonFrom, wonFromUuid};
+  return {getFlag: (m, k) => flags[k]};
+}
+
+check("undo still recognises a prize after the wheel is renamed", () => {
+  // Granted from a wheel called "Dragon Hoard"...
+  const item = grantedItem({wonFrom: "Dragon Hoard", wonFromUuid: "RollTable.abc"});
+  const record = {tableName: "Dragon Hoard", tableUuid: "RollTable.abc"};
+  assert(isOurGrant(item, record), "recognised before any rename");
+
+  // ...and the GM renames the wheel before undoing. The item's stamped name is
+  // now stale, but the uuid is not.
+  const renamed = {tableName: "The Wyrm's Trove", tableUuid: "RollTable.abc"};
+  assert(isOurGrant(item, renamed), "a rename does not strand the prize");
+});
+
+check("undo still refuses an item from a different wheel", () => {
+  // The check exists to stop undo deleting something it did not create; making
+  // it rename-proof must not make it credulous.
+  const item = grantedItem({wonFrom: "Dragon Hoard", wonFromUuid: "RollTable.abc"});
+  assert(!isOurGrant(item, {tableName: "Common Hoard", tableUuid: "RollTable.xyz"}),
+    "a different wheel is refused");
+  assert(!isOurGrant(item, {tableName: "Dragon Hoard", tableUuid: "RollTable.xyz"}),
+    "the same name on a different table is still refused");
+});
+
+check("undo refuses an item the wheel never granted", () => {
+  const stranger = grantedItem({wonFrom: undefined, wonFromUuid: undefined});
+  assert(!isOurGrant(stranger, {tableName: "Dragon Hoard", tableUuid: "RollTable.abc"}),
+    "an unstamped item is never ours");
+  // An item whose slot in the inventory was taken by something else entirely.
+  const other = {getFlag: () => undefined};
+  assert(!isOurGrant(other, {tableName: "Dragon Hoard", tableUuid: "RollTable.abc"}));
+});
+
+check("a prize won before uuids were stamped still undoes", () => {
+  // Upgrade path: an item granted by an older version carries only the name.
+  const legacy = grantedItem({wonFrom: "Dragon Hoard", wonFromUuid: undefined});
+  assert(isOurGrant(legacy, {tableName: "Dragon Hoard", tableUuid: "RollTable.abc"}),
+    "falls back to the name it was actually stamped with");
+  assert(!isOurGrant(legacy, {tableName: "Common Hoard", tableUuid: "RollTable.abc"}),
+    "and the fallback is still a real check, not a waiver");
+});
+
+check("a record from before uuids were recorded still matches", () => {
+  // The other half of the upgrade path: a new item, an old record.
+  const item = grantedItem({wonFrom: "Dragon Hoard", wonFromUuid: "RollTable.abc"});
+  assert(isOurGrant(item, {tableName: "Dragon Hoard", tableUuid: null}),
+    "falls back when the record predates the uuid");
+});
+
+
+/* -------------------------------------------- */
+/*  Q6 — drawing a wheel without resolving it    */
+/* -------------------------------------------- */
+
+/** A table whose results are document-backed, as a real wheel's are. */
+function shapedTable(spec) {
+  const results = spec.map(([id, range, stock], i) => ({
+    id, name: "Prize " + i, img: "a.webp", range,
+    type: "document", documentUuid: "Item." + id,
+    getFlag: (m, k) => (k === "stock" ? stock : undefined)
+  }));
+  return {results: Object.assign(results, {size: results.length})};
+}
+
+check("a wheel's shape is readable without touching a single document", () => {
+  // The point of the fix: a thumbnail draws coloured arcs, and needs slice
+  // counts, not names or art or rules text.
+  let resolved = 0;
+  const spy = globalThis.fromUuid;
+  globalThis.fromUuid = async () => { resolved++; return null; };
+
+  const shape = wheelShape(shapedTable([
+    ["a", [1, 32], undefined],
+    ["b", [33, 48], 0],
+    ["c", [49, 64], 3]
+  ]));
+
+  globalThis.fromUuid = spy;
+  eq(resolved, 0, "nothing was resolved");
+  eq(shape.map(s => s.count), [32, 16, 16], "slice counts come off the ranges");
+  eq(shape.map(s => s.depleted), [false, true, false], "and claimed wedges are still known");
+});
+
+check("the shape reads in slot order, whatever order the results are in", () => {
+  const shape = wheelShape(shapedTable([
+    ["late", [33, 64], undefined],
+    ["early", [1, 32], undefined]
+  ]));
+  // Drawn clockwise from the first slot, so the order has to be by range.
+  eq(shape.map(s => s.count), [32, 32]);
+});
+
+check("results with no slot range are skipped rather than drawn as nothing", () => {
+  const shape = wheelShape(shapedTable([
+    ["real", [1, 32], undefined],
+    ["unranged", [0, 0], undefined]
+  ]));
+  eq(shape.length, 1, "an unranged result owns no slices and is not a wedge");
+  eq(shape[0].count, 32);
+});
+
+check("an empty table has no shape at all", () => {
+  eq(wheelShape(shapedTable([])), [], "nothing to draw");
 });
 
 /* -------------------------------------------- */

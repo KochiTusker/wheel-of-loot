@@ -188,14 +188,73 @@ async function releaseSpin(session, {refund = null} = {}) {
   session.currentActorId = null;
   session.currentActorName = null;
   session.giftedTo = null;
-  if (!refund) return;
+  if (refund) await refundSpin(refund);
+}
+
+/**
+ * Hand one spin back.
+ *
+ * Separate from `releaseSpin` because a failed grant happens *after* the wheel
+ * has landed: the phase still has to run through resolution and re-arm the
+ * normal way, and only the credit is owed.
+ *
+ * @param {string} userId
+ * @returns {Promise<boolean>} Whether the ledger was changed.
+ */
+export async function refundSpin(userId) {
+  if (!userId) return false;
   try {
     const map = getCredits();
-    map[refund] = (Number(map[refund]) || 0) + 1;
+    map[userId] = (Number(map[userId]) || 0) + 1;
     await writeCredits(map);
+    return true;
   } catch (err) {
     console.error("Wheel of Loot | could not refund the spin", err);
+    return false;
   }
+}
+
+/**
+ * Whether this client is holding any live wheel.
+ *
+ * A GM that has just finished loading cannot be, by definition — the map is
+ * in memory and a reload emptied it. That is what makes it safe to conclude
+ * that any wheel still on a player's screen is an orphan.
+ *
+ * @returns {boolean}
+ */
+export function hasLiveSessions() {
+  return sessions.size > 0;
+}
+
+/**
+ * Give back any spin whose player has vanished mid-decision.
+ *
+ * The phase is released by `resolveWheel`, and a client that closed before
+ * choosing never sends one — so without this the wheel stays locked on a
+ * decision nobody is going to make, and the GM's only exit is ending the
+ * ceremony for everybody.
+ *
+ * The credit comes back because the player never got to choose. They did not
+ * spend their turn; their browser did.
+ *
+ * Returns the sessions it freed rather than broadcasting itself, so the rule
+ * can be tested without a socket.
+ *
+ * @param {string} userId
+ * @returns {Promise<string[]>} Session ids that were released.
+ */
+export async function releaseAbandonedSpins(userId) {
+  const released = [];
+  for (const [sessionId, session] of sessions) {
+    if (session.phase !== "spinning") continue;
+    if (session.currentSpinnerId !== userId) continue;
+    // A GM spins without spending, so there is nothing to give back.
+    const wasGM = !!game.users.get(userId)?.isGM;
+    await releaseSpin(session, {refund: wasGM ? null : userId});
+    released.push(sessionId);
+  }
+  return released;
 }
 
 /* -------------------------------------------- */
@@ -302,6 +361,10 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
   const entry = session.entry;
   let granted = null;
   let coins = null;
+  // Distinct from "granted nothing": a text wedge that is not currency is
+  // *meant* to hand over nothing automatically, and the card says to do it by
+  // hand. Only an actual failure earns the spin back.
+  let failed = false;
 
   if (accepted) {
     try {
@@ -310,8 +373,11 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
         if (!source) throw new Error(`could not resolve ${entry.uuid}`);
         const data = source.toObject();
         delete data._id;
-        // Stamp provenance so a later audit can tell wheel loot from imports.
+        // Provenance, so a later audit can tell wheel loot from an import — and
+        // so undo can prove this is the document it created. The name is the
+        // label a human reads; the uuid is what survives a rename.
         foundry.utils.setProperty(data, `flags.${MODULE_ID}.wonFrom`, session.tableName);
+        foundry.utils.setProperty(data, `flags.${MODULE_ID}.wonFromUuid`, session.tableUuid ?? null);
         [granted] = await actor.createEmbeddedDocuments("Item", [data]);
       } else {
         // A text wedge: the only thing we know how to pay out is coin, and only
@@ -324,7 +390,17 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
       ui.notifications.error(t("Notify.GrantFailed", {item: entry.name, actor: actor?.name ?? "?"}));
       granted = null;
       coins = null;
+      failed = true;
     }
+  }
+
+  // The credit was spent before the roll, which is what stops a click flood.
+  // When the prize could not actually be handed over — the item was deleted
+  // between the wheel being presented and the prize being taken, say — the
+  // player has paid for nothing, exactly as they would have on a failed roll.
+  if (failed && !game.users.get(session.currentSpinnerId)?.isGM) {
+    await refundSpin(session.currentSpinnerId);
+    await tell(session.currentSpinnerId, t("Notify.SpinRefunded"));
   }
 
   // Remember what changed hands, so a GM can take it back if it was a mistake.
@@ -338,6 +414,7 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
       coins: coins ?? null,
       prizeName: entry.name,
       tableName: session.tableName,
+      tableUuid: session.tableUuid ?? null,
       spinnerId: session.currentSpinnerId,
       spinnerWasGM: !!game.users.get(session.currentSpinnerId)?.isGM,
       at: session.grantAt
@@ -404,7 +481,10 @@ async function spendStock(session, entry) {
     try {
       await socket().executeForEveryone("depleteWedge", {
         sessionId: session.sessionId,
-        name: entry.name
+        // The index, not the name: two wedges can legitimately share a name
+        // (different printings of the same item), and only one of them is
+        // spent. The index is what the layout is keyed on already.
+        index: session.entries.indexOf(entry)
       });
     } catch (err) {
       console.error("Wheel of Loot | could not announce the depleted wedge", err);

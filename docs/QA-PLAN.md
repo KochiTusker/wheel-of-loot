@@ -6,17 +6,21 @@ ordered by what they cost a GM in the middle of a session.
 Each entry states the symptom, why it happens, the fix, and — importantly — how
 the fix is *proved*. A fix without a failing-then-passing check is a hope.
 
-Status is updated as work lands.
+Status is updated as work lands. **Q1–Q6 are fixed and proved; Q7 is not code.**
+
+Every fix was written first, then a check that fails without it. Q1 was verified
+by disabling the fix and watching the checks go red, which is the only way to
+know a test is testing anything.
 
 | # | Issue | Severity | Status |
 |---|---|---|---|
-| Q1 | A player who disconnects mid-spin strands the wheel | High — kills the session | ☐ |
-| Q2 | A GM reload leaves a dead wheel on every screen | High — kills the session | ☐ |
-| Q3 | A failed grant costs the player their spin | Medium — silent loss | ☐ |
-| Q4 | Depletion greys every wedge sharing a name | Medium — wrong prize retired | ☐ |
-| Q5 | Undo breaks if the table is renamed | Low — feature unavailable | ☐ |
-| Q6 | The manager resolves every UUID on every wheel to draw thumbnails | Low — slow with many wheels | ☐ |
-| Q7 | Confidence gaps: multi-client, non-dnd5e, Foundry v13 | — | ☐ |
+| Q1 | A player who disconnects mid-spin strands the wheel | High — kills the session | ☑ fixed, 5 checks |
+| Q2 | A GM reload leaves a dead wheel on every screen | High — kills the session | ☑ fixed, 2 checks |
+| Q3 | A failed grant costs the player their spin | Medium — silent loss | ☑ fixed, 4 checks |
+| Q4 | Depletion greys every wedge sharing a name | Medium — wrong prize retired | ☑ fixed, verified live |
+| Q5 | Undo breaks if the table is renamed | Low — feature unavailable | ☑ fixed, 5 checks |
+| Q6 | The manager resolves every UUID on every wheel to draw thumbnails | Low — slow with many wheels | ☑ fixed, 4 checks + live |
+| Q7 | Confidence gaps: multi-client, non-dnd5e, Foundry v13 | — | open — needs a real world |
 
 ---
 

@@ -249,10 +249,10 @@ export class LootWheel {
    * party loots it is the point, and removing wedges mid-session would mean
    * relaying out the wheel under everyone's eyes.
    */
-  static deplete({sessionId, name} = {}) {
+  static deplete({sessionId, index} = {}) {
     const wheel = LootWheel.current;
     if (!wheel || wheel.config.sessionId !== sessionId) return;
-    wheel.markDepleted(name);
+    wheel.markDepleted(index);
   }
 
   /** Nothing left to win; close with a word rather than in silence. */
@@ -261,6 +261,19 @@ export class LootWheel {
     if (!wheel || wheel.config.sessionId !== sessionId) return;
     ui.notifications.info(t("Wheel.Exhausted"));
     wheel.destroy();
+  }
+
+  /**
+   * Close whatever wheel this client is showing, whoever it belonged to.
+   *
+   * Sent by a GM that holds no sessions, so anything on screen here is an
+   * orphan. Says so rather than vanishing silently, because a wheel
+   * disappearing unexplained looks like a different bug.
+   */
+  static dismissOrphan() {
+    if (!LootWheel.current) return;
+    ui.notifications.warn(t("Wheel.Orphaned"));
+    LootWheel.current.destroy();
   }
 
   static dismiss(sessionId) {
@@ -288,23 +301,21 @@ export class LootWheel {
   }
 
   /**
-   * Mark every slice belonging to a named entry as claimed.
+   * Mark every slice belonging to one entry as claimed.
    *
-   * Matched by name because that is what the broadcast carries, and two wedges
-   * sharing a name are already flagged as a mistake in the builder.
+   * Keyed on the entry index rather than its name. Two wedges may hold
+   * different printings of the same item — the builder warns about it but does
+   * not forbid it, because they really are different items — and matching on
+   * the name struck out both while only one had actually been spent.
    *
-   * @param {string} name
+   * @param {number} index
    */
-  markDepleted(name) {
-    const {entries, layout} = this.config;
-    const index = entries.findIndex(e => e.name === name);
-    if (index < 0) return;
+  markDepleted(index) {
+    const {entries} = this.config;
+    if (!Number.isInteger(index) || !entries[index]) return;
     entries[index].depleted = true;
-    layout.forEach((entryIndex, slice) => {
-      if (entryIndex !== index) return;
-      this.root?.querySelectorAll(`.wol-wedge[data-entry="${index}"]`)
-        .forEach(g => g.classList.add("claimed"));
-    });
+    this.root?.querySelectorAll(`.wol-wedge[data-entry="${index}"]`)
+      .forEach(g => g.classList.add("claimed"));
   }
 
   /** Re-render the spin affordance after the ledger changes. */
