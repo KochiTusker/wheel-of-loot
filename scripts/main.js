@@ -243,15 +243,23 @@ Hooks.on("getSceneControlButtons", controls => {
 /**
  * A wheel is a RollTable, so offer the builder from the table's own sheet —
  * that is where a GM already goes to edit one.
+ *
+ * ApplicationV2 builds this hook's name as `getHeaderControls` plus the sheet
+ * class name, walking the inheritance chain. v14 calls the sheet
+ * `RollTableSheet`; older cores called it `RollTableConfig`. Registering both
+ * costs nothing and means the button appears either way — only one will ever
+ * fire, because only one class exists.
  */
-Hooks.on("getHeaderControlsRollTableConfig", (app, buttons) => {
-  if (!game.user.isGM) return;
-  buttons.unshift({
-    icon: "fa-solid fa-arrows-spin",
-    label: "WHEELOFLOOT.Control.Build",
-    onClick: () => WheelBuilder.open(app.document)
+for (const sheetClass of ["RollTableSheet", "RollTableConfig"]) {
+  Hooks.on(`getHeaderControls${sheetClass}`, (app, controls) => {
+    if (!game.user.isGM) return;
+    controls.unshift({
+      icon: "fa-solid fa-arrows-spin",
+      label: "WHEELOFLOOT.Control.Build",
+      onClick: () => WheelBuilder.open(app.document)
+    });
   });
-});
+}
 
 /**
  * Re-exported so the permission rules can be driven directly under test, and so
