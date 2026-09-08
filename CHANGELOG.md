@@ -17,6 +17,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   flags it and offers to keep the wedge as a custom prize. Its name, art and
   rarity are already on the table result, and its slots, odds, jackpot and
   stock are preserved — so a broken link no longer means rebuilding the wedge.
+- **Every control now has an accessible name.** The interface leans hard on
+  icon buttons — a wheel of forty wedges carries a jackpot star, an edit pencil,
+  a reroll die and a remove cross on every row — and measured on a real wheel,
+  809 of them announced themselves to a screen reader as "button". The ones
+  that repeat per row now say which prize they act on ("Remove Potion of Healing
+  from the wheel"), and a sweep at render time names anything else from its
+  tooltip, so a button added later cannot arrive nameless. Filter controls and
+  number fields are labelled too.
 - **What coin is already on offer.** "Add coin" was a button with no memory.
   The coin bar now lists every coin wedge on the wheel with its width, and says
   what a spin is worth on average — which accounts for both how wide each coin

@@ -38,6 +38,9 @@ jobs:
       - name: No unused imports
         run: node tools/check-imports.mjs
 
+      - name: Bundled icon paths exist
+        run: node tools/check-icons.mjs
+
       - name: Tests
         run: node test/run.mjs
 

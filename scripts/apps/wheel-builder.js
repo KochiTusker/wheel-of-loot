@@ -24,6 +24,7 @@ import {DEDUPE_MODES, foldDuplicates} from "../core/dedupe.js";
 import {DEFAULT_ODDS, MAX_ODDS, MIN_ODDS, clampOdds, isUnweighted, trueChances} from "../core/odds.js";
 import {coinDenomination, coinPresets, defaultSlots, resolveWheelConfig} from "../core/settings.js";
 import {MODULE_ID, t} from "../core/constants.js";
+import {nameIconButtons} from "./a11y.js";
 import {planWheel} from "../core/wheel-plan.js";
 import {systemAdapter} from "../systems/adapter.js";
 
@@ -264,13 +265,16 @@ export class WheelBuilder extends ApplicationV2 {
             </span>
           </header>
           <div class="wol-b-filters">
-            <input type="search" name="search" placeholder="${t("Builder.SearchPlaceholder")}"
+            <input type="search" name="search" aria-label="${t("Builder.FilterSearch")}"
+              placeholder="${t("Builder.SearchPlaceholder")}"
               value="${foundry.utils.escapeHTML(this.filters.search)}">
-            <select name="type"></select>
-            ${adapter.rarities.length ? `<select name="rarity"></select>` : ""}
-            <select name="pack"></select>
-            <select name="source"></select>
-            <select name="dupes" data-tooltip="${t("Builder.DupesHint")}">
+            <select name="type" aria-label="${t("Builder.FilterType")}"></select>
+            ${adapter.rarities.length
+              ? `<select name="rarity" aria-label="${t("Builder.FilterRarity")}"></select>` : ""}
+            <select name="pack" aria-label="${t("Builder.FilterPack")}"></select>
+            <select name="source" aria-label="${t("Builder.FilterSource")}"></select>
+            <select name="dupes" aria-label="${t("Builder.FilterDupes")}"
+              data-tooltip="${t("Builder.DupesHint")}">
               ${DEDUPE_MODES.map(m => `<option value="${m}"${
                 m === this.filters.dupes ? " selected" : ""}>${t(`Builder.Dupes.${m}`)}</option>`).join("")}
             </select>
@@ -319,7 +323,7 @@ export class WheelBuilder extends ApplicationV2 {
                 data-tooltip="${t("Builder.NewPrizeHint")}">
                 <i class="fa-solid fa-gift"></i> ${t("Builder.NewPrize")}
               </button>
-              <select name="coin">
+              <select name="coin" aria-label="${t("Builder.CoinAmount")}">
                 ${coinPresets().map(v => `<option value="${v}">${v} ${denom}</option>`).join("")}
               </select>
               <button type="button" class="wol-b-ghost" data-action="addCoin">
@@ -360,6 +364,7 @@ export class WheelBuilder extends ApplicationV2 {
   _replaceHTML(result, content) {
     content.replaceChildren(result);
     this.#hydrate(content);
+    nameIconButtons(content);
     WheelBuilder.current = this;
   }
 
@@ -601,6 +606,7 @@ export class WheelBuilder extends ApplicationV2 {
     list.innerHTML = shown.map(c => {
       const use = USE_LABEL[c.profile];
       const onWheel = used.has(c.uuid);
+      const safe = foundry.utils.escapeHTML(c.name);
       return `
       <li class="wol-b-row${onWheel ? " on-wheel" : ""}" draggable="true" data-uuid="${c.uuid}">
         <img src="${foundry.utils.escapeHTML(c.img || "icons/svg/item-bag.svg")}" alt="">
@@ -624,10 +630,12 @@ export class WheelBuilder extends ApplicationV2 {
             : `<span class="var"></span>`)}
         ${adapter.tracksUses ? `<span class="use u-${c.profile}" data-tooltip="${t(use.key)}">${use.tag}</span>` : ""}
         ${c.rarity ? `<span class="rar r-${c.rarity}">${adapter.rarityLabel(c.rarity)}</span>` : `<span class="rar"></span>`}
-        <button type="button" data-action="expand" data-uuid="${c.uuid}" data-tooltip="${t("Builder.ShowDetail")}">
+        <button type="button" data-action="expand" data-uuid="${c.uuid}"
+          aria-label="${t("Builder.Aria.Expand", {name: safe})}" data-tooltip="${t("Builder.ShowDetail")}">
           <i class="fa-solid fa-chevron-down"></i>
         </button>
-        <button type="button" data-action="add" data-uuid="${c.uuid}" data-tooltip="${t("Builder.AddToWheel")}">
+        <button type="button" data-action="add" data-uuid="${c.uuid}"
+          aria-label="${t("Builder.Aria.Add", {name: safe})}" data-tooltip="${t("Builder.AddToWheel")}">
           <i class="fa-solid fa-plus"></i>
         </button>
       </li>`;
@@ -651,6 +659,7 @@ export class WheelBuilder extends ApplicationV2 {
     count.textContent = hidden > 0
       ? `${shownText} — ${t("Builder.Folded", {n: hidden})}`
       : shownText;
+    nameIconButtons(list);
   }
 
   #renderEntries(content) {
@@ -676,6 +685,10 @@ export class WheelBuilder extends ApplicationV2 {
       // nothing at the default window size. They are browsing facts, already on
       // show in the catalogue where the choice is made, so on the wheel they
       // become a tooltip on the name and the space goes back to the name.
+      // Interpolated into a dozen accessible names below. A screen reader user
+      // hears "Remove Potion of Healing from the wheel" rather than "button",
+      // which is the whole difference in a list of forty identical rows.
+      const safe = foundry.utils.escapeHTML(e.name);
       const tip = nameTooltip(
         e.name,
         e.uuid && e.source,
@@ -693,37 +706,44 @@ export class WheelBuilder extends ApplicationV2 {
         <span class="tag">${e.custom ? t("Builder.CustomTag") : ""}</span>
         ${e.rarity ? `<span class="rar r-${e.rarity}">${adapter.rarityLabel(e.rarity)}</span>` : `<span class="rar"></span>`}
         <span class="slots">
-          <button type="button" data-action="bump" data-index="${i}" data-delta="-1"><i class="fa-solid fa-minus"></i></button>
-          <input type="number" min="1" step="1" value="${e.weight}" data-weight aria-label="${t("Builder.Slots")}">
-          <button type="button" data-action="bump" data-index="${i}" data-delta="1"><i class="fa-solid fa-plus"></i></button>
+          <button type="button" data-action="bump" data-index="${i}" data-delta="-1"
+            aria-label="${t("Builder.Aria.SlotDown", {name: safe})}"><i class="fa-solid fa-minus"></i></button>
+          <input type="number" min="1" step="1" value="${e.weight}" data-weight
+            aria-label="${t("Builder.Aria.Slots", {name: safe})}">
+          <button type="button" data-action="bump" data-index="${i}" data-delta="1"
+            aria-label="${t("Builder.Aria.SlotUp", {name: safe})}"><i class="fa-solid fa-plus"></i></button>
         </span>
         <span class="odds${(e.odds ?? DEFAULT_ODDS) === DEFAULT_ODDS ? "" : " bent"}"
           data-tooltip="${t("Builder.OddsHint")}">
           <input type="number" min="${MIN_ODDS}" max="${MAX_ODDS}" step="5"
-            value="${e.odds ?? DEFAULT_ODDS}" data-odds aria-label="${t("Builder.Odds")}">
+            value="${e.odds ?? DEFAULT_ODDS}" data-odds aria-label="${t("Builder.Aria.Odds", {name: safe})}">
           <span class="pct">%</span>
         </span>
         <span class="stock${e.stock != null ? " limited" : ""}${e.stock === 0 ? " out" : ""}"
           data-tooltip="${t("Builder.StockHint")}">
           <input type="number" min="0" step="1" placeholder="∞"
-            value="${e.stock ?? ""}" data-stock aria-label="${t("Builder.Stock")}">
+            value="${e.stock ?? ""}" data-stock aria-label="${t("Builder.Aria.Stock", {name: safe})}">
         </span>
         <span class="chance" data-role="chance-${i}"></span>
         <button type="button" class="jp${e.jackpot ? " on" : ""}" data-action="jackpot" data-index="${i}"
+          aria-label="${t("Builder.Aria.Jackpot", {name: safe})}"
           data-tooltip="${t("Builder.JackpotHint")}">
           <i class="fa-solid fa-star"></i>
         </button>
         ${e.custom || e.missing
           ? `<button type="button" class="ed" data-action="editEntry" data-index="${i}"
+              aria-label="${t(e.missing ? "Builder.Aria.Repair" : "Builder.Aria.Edit", {name: safe})}"
               data-tooltip="${t(e.missing ? "Builder.RepairTip" : "Builder.EditPrizeTip")}">
               <i class="fa-solid fa-pen"></i>
             </button>`
           : `<span class="ed"></span>`}
         <button type="button" class="rr" data-action="rerollOne" data-index="${i}"
+          aria-label="${t("Builder.Aria.Reroll", {name: safe})}"
           data-tooltip="${t("Builder.RerollHint")}"${e.isCoin ? " disabled" : ""}>
           <i class="fa-solid fa-dice-d20"></i>
         </button>
-        <button type="button" class="rm" data-action="remove" data-index="${i}" data-tooltip="${t("Builder.RemoveHint")}">
+        <button type="button" class="rm" data-action="remove" data-index="${i}"
+          aria-label="${t("Builder.Aria.Remove", {name: safe})}" data-tooltip="${t("Builder.RemoveHint")}">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </li>`;
@@ -731,6 +751,7 @@ export class WheelBuilder extends ApplicationV2 {
     this.#renderTally(content);
     this.#renderChances(content);
     this.#renderCoinSummary(content);
+    nameIconButtons(list);
   }
 
   /**

@@ -40,6 +40,23 @@ straight away, homebrew included; you don't have to reopen anything.
 
 ---
 
+## Dry run
+
+The gap between a list of names and a wheel your players are watching is where
+the surprises live — a prize whose name is unreadable at 64 slices, a jackpot
+that turns out to be invisible, an odds tweak that quietly made the grand prize
+impossible. All of that is obvious in one spin and invisible in an editor.
+
+**Dry run** in the builder spins the wheel exactly as the table will meet it:
+the real layout, the real art, the real odds, the real confetti. On your screen
+only. No session, no broadcast, no credit spent, nothing granted, no stock
+decremented, nothing written to the table — and it runs on the *unsaved* builder
+state, so you can try a change, look at it, and abandon it by closing the window.
+
+It uses the same two functions the live wheel does to build the entries and
+choose the winning slice, rather than a preview-shaped copy of them. A rehearsal
+that computed its result differently would be worth nothing.
+
 ## Requirements
 
 - Foundry VTT v13 or v14
@@ -158,6 +175,11 @@ way. Name a text result `250 gp` (or gold / sp / silver / cp / ep / pp, commas
 allowed) and it is paid into the winner's purse instead. The builder's **Add
 coin** button writes these for you.
 
+Underneath it, the bar lists every coin wedge already on the wheel and what a
+spin is worth on average. That last figure is expected value, not a total: a
+250 gp wedge one slice wide and weighted down to a quarter is not a 250 gp prize
+in any sense your players will experience.
+
 ## Other systems
 
 Everything system-specific — what a rarity is, where a purse lives, whether an
@@ -234,6 +256,14 @@ changes nothing until you change something. That promise is pinned by a test.
 A silver-standard campaign sets the denomination to `sp`; a horror game takes the
 Midnight palette, turns off confetti and whispers the result card to the GM; a
 table that wants every spin binding turns off refusing.
+
+## Accessibility
+
+Every control has an accessible name, and the ones that repeat per row say which
+prize they belong to — a screen reader announces "Remove Potion of Healing from
+the wheel", not "button" forty times. Animation follows each viewer's own
+reduced-motion preference by default; with it on, the wheel resolves without the
+six-second spin but keeps a beat so the result still reads as an outcome.
 
 ## Development
 

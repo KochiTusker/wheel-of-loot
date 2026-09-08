@@ -18,6 +18,7 @@ import {
   hasLiveSessions, refundSpin, releaseAbandonedSpins, sessions
 } from "../scripts/core/session.js";
 import {isOurGrant} from "../scripts/core/undo.js";
+import {nameIconButtons} from "../scripts/apps/a11y.js";
 import {wheelShape} from "../scripts/core/wheels.js";
 
 import {installEntryStub, installRollStub, installSettingsStub, installWorldStub} from "./harness.mjs";
@@ -1501,6 +1502,78 @@ check("two printings still tell each other apart in a world that is not D&D", ()
   assert(redundancySignature(cheap) !== redundancySignature(dear),
     "the ten-use printing is not a redundant copy of the one-use printing");
   assert(completeness(dear) > 0, "and a pf2e row scores as complete rather than as a stub");
+});
+
+
+/* -------------------------------------------- */
+/*  Naming the icon-only controls               */
+/* -------------------------------------------- */
+
+/**
+ * A stand-in for a button, faithful for the four operations the sweep performs:
+ * read an aria-label, read visible text, read a tooltip, set an aria-label.
+ * It does not stand in for a DOM — what a real tree does with `querySelectorAll`
+ * is the browser's business and is exercised in a live world instead.
+ */
+function fakeButton({text = "", tooltip = null, aria = null} = {}) {
+  const attrs = aria ? {"aria-label": aria} : {};
+  return {
+    textContent: text,
+    dataset: tooltip ? {tooltip} : {},
+    getAttribute: key => attrs[key] ?? null,
+    setAttribute: (key, value) => { attrs[key] = value; },
+    get aria() { return attrs["aria-label"] ?? null; }
+  };
+}
+
+const fakeRoot = buttons => ({querySelectorAll: () => buttons});
+
+check("an icon-only button takes its tooltip as its name", () => {
+  const b = fakeButton({tooltip: "Remove"});
+  eq(nameIconButtons(fakeRoot([b])), 1, "it was named");
+  eq(b.aria, "Remove");
+});
+
+check("a button that already reads well is left alone", () => {
+  // Visible text is already an accessible name; overwriting it would be noise.
+  const labelled = fakeButton({text: "Save to table", tooltip: "Write the wheel"});
+  // And a considered name beats a tooltip written for hover.
+  const deliberate = fakeButton({tooltip: "Mark this as the grand prize — a gold edge…", aria: "Grand prize"});
+
+  eq(nameIconButtons(fakeRoot([labelled, deliberate])), 0, "neither needed naming");
+  eq(labelled.aria, null, "the text button gains nothing");
+  eq(deliberate.aria, "Grand prize", "the deliberate name survives");
+});
+
+check("a button with nothing to say is not given an invented name", () => {
+  // The slot steppers arrived here with no tooltip. Guessing at a name would be
+  // worse than none: the fix is to write one, and this is what surfaces that.
+  const bare = fakeButton({});
+  eq(nameIconButtons(fakeRoot([bare])), 0);
+  eq(bare.aria, null, "left unnamed, and visibly so");
+});
+
+check("the sweep survives being handed nothing", () => {
+  eq(nameIconButtons(null), 0);
+  eq(nameIconButtons(undefined), 0);
+  eq(nameIconButtons({}), 0, "an object with no DOM behind it");
+  eq(nameIconButtons(fakeRoot([])), 0);
+});
+
+check("every accessible name the builder writes has a string behind it", () => {
+  // The per-row names are formatted with the prize's name, so a missing key
+  // would ship as a raw "WHEELOFLOOT.Builder.Aria.Remove" read aloud on every
+  // row. Checked here rather than trusted to the i18n scan alone.
+  const lang = JSON.parse(fs.readFileSync("lang/en.json", "utf8"));
+  const keys = [
+    "Add", "Edit", "Expand", "Jackpot", "Odds", "Remove",
+    "Repair", "Reroll", "SlotDown", "SlotUp", "Slots", "Stock"
+  ];
+  for (const key of keys) {
+    const full = `WHEELOFLOOT.Builder.Aria.${key}`;
+    assert(lang[full], `${full} is missing`);
+    assert(lang[full].includes("{name}"), `${full} does not say which prize it means`);
+  }
 });
 
 /* -------------------------------------------- */

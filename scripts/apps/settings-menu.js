@@ -11,6 +11,7 @@
  */
 
 import {MODULE_ID, t} from "../core/constants.js";
+import {nameIconButtons} from "./a11y.js";
 import {
   OVERRIDABLE, PALETTES, S, THEMES, parseNumberList, parsePalette,
   saveWheelOverrides, wheelOverrides
@@ -254,6 +255,7 @@ export class WheelSettings extends ApplicationV2 {
   _replaceHTML(result, content) {
     content.replaceChildren(result);
     this.#hydrate(content);
+    nameIconButtons(content);
   }
 
   #hydrate(content) {

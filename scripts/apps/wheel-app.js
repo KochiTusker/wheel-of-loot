@@ -12,6 +12,7 @@
  */
 
 import {burst} from "../lib/confetti.js";
+import {nameIconButtons} from "./a11y.js";
 import {labelBudget, labelFontSize, sliceColours} from "../core/wheel-data.js";
 import {MODULE_ID, t} from "../core/constants.js";
 import {
@@ -376,6 +377,7 @@ export class LootWheel {
     document.body.append(root);
     this.root = root;
     this.#renderActions();
+    nameIconButtons(root);
   }
 
   #wheelSvg() {

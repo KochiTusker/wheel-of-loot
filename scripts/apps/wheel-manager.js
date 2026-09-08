@@ -13,6 +13,7 @@
  */
 
 import {t} from "../core/constants.js";
+import {nameIconButtons} from "./a11y.js";
 import {duplicateWheel, isWheel, listWheels, restock, wheelShape} from "../core/wheels.js";
 import {describeFault, disperseSlots, sliceColours} from "../core/wheel-data.js";
 import {palette} from "../core/settings.js";
@@ -121,6 +122,7 @@ export class WheelManager extends ApplicationV2 {
 
   _replaceHTML(result, content) {
     content.replaceChildren(result);
+    nameIconButtons(content);
     WheelManager.current = this;
   }
 
