@@ -17,6 +17,19 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   flags it and offers to keep the wedge as a custom prize. Its name, art and
   rarity are already on the table result, and its slots, odds, jackpot and
   stock are preserved — so a broken link no longer means rebuilding the wedge.
+- **Screenshots, and a README built around them.** Five captures of the real
+  interface — the wheel, the reveal card, the builder, the manager and the
+  settings — taken from a live world by `node tools/shoot.mjs`, so they can be
+  made current again after any interface change rather than slowly coming to
+  describe a version nobody is running.
+- **The reference material moved out of the README** into `docs/`: settings,
+  the API and adding a game system, development, and a new troubleshooting
+  guide covering the things that actually catch people — why an item is not in
+  the list (two filters are on by default), why coin did not pay out, why the
+  wheel is stuck, what the warning triangle on a wedge means.
+- `tools/check-docs.mjs`, which verifies every relative link and image in the
+  documentation resolves. A broken image renders as a torn page on the package
+  listing and fails no other check.
 - **Every control now has an accessible name.** The interface leans hard on
   icon buttons — a wheel of forty wedges carries a jackpot star, an edit pencil,
   a reroll die and a remove cross on every row — and measured on a real wheel,

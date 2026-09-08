@@ -41,6 +41,9 @@ jobs:
       - name: Bundled icon paths exist
         run: node tools/check-icons.mjs
 
+      - name: Documentation links resolve
+        run: node tools/check-docs.mjs
+
       - name: Tests
         run: node test/run.mjs
 
