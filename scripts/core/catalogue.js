@@ -122,6 +122,62 @@ export async function buildCatalogue({force = false} = {}) {
   return rows;
 }
 
+/* -------------------------------------------- */
+/*  Keeping up with the world                   */
+/* -------------------------------------------- */
+
+/**
+ * True for an Item that lives in the world's own directory.
+ *
+ * An item on an actor has a parent, and a compendium item has a pack; neither
+ * belongs in the catalogue, and reacting to them would mean rebuilding the
+ * index every time a player picked up a torch.
+ */
+export function isWorldItem(item) {
+  return !!item && item.documentName === "Item" && !item.parent && !item.pack;
+}
+
+/**
+ * Fold a newly created or edited world item into the cached catalogue.
+ *
+ * Surgical rather than a full rebuild: re-indexing every compendium costs
+ * thousands of rows, and a GM who has just made a custom prize expects to find
+ * it immediately, not after a pause. Rebuilding on every keystroke of an item
+ * edit would be worse still.
+ *
+ * @param {Item} item
+ * @returns {boolean} Whether the catalogue changed.
+ */
+export function upsertWorldItem(item) {
+  if (!cache || !isWorldItem(item)) return false;
+  const worldLabel = game.i18n.localize("WHEELOFLOOT.Catalogue.WorldItems");
+  const row = toRow(item, item.uuid, WORLD_PACK_ID, worldLabel);
+  const at = cache.findIndex(c => c.uuid === item.uuid);
+  if (at >= 0) cache[at] = row;
+  else {
+    // Keep the sort the builder relies on rather than re-sorting the lot.
+    const index = cache.findIndex(c => c.name.localeCompare(row.name) > 0);
+    cache.splice(index < 0 ? cache.length : index, 0, row);
+  }
+  annotateDuplicates(cache);
+  return true;
+}
+
+/**
+ * Drop a deleted world item from the cached catalogue.
+ *
+ * @param {Item} item
+ * @returns {boolean} Whether the catalogue changed.
+ */
+export function removeWorldItem(item) {
+  if (!cache || !isWorldItem(item)) return false;
+  const at = cache.findIndex(c => c.uuid === item.uuid);
+  if (at < 0) return false;
+  cache.splice(at, 1);
+  annotateDuplicates(cache);
+  return true;
+}
+
 /** Look one row up by uuid, without forcing a rebuild. */
 export function catalogueRow(uuid) {
   return cachedCatalogue().find(c => c.uuid === uuid) ?? null;

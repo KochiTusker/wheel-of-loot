@@ -21,6 +21,7 @@ import {registerDnd5e} from "./systems/dnd5e.js";
 import {WheelSettings} from "./apps/settings-menu.js";
 import {runMigration} from "./core/migrate.js";
 import {describeLastGrant, lastGrant, undoLastGrant} from "./core/undo.js";
+import {invalidateCatalogue, isWorldItem, removeWorldItem, upsertWorldItem} from "./core/catalogue.js";
 
 /* -------------------------------------------- */
 /*  Client-side socket handlers                 */
@@ -200,6 +201,31 @@ Hooks.on("updateSetting", setting => {
  * is where a GM already goes looking for one. Everything the module does is
  * reachable from the launcher this opens.
  */
+/**
+ * Keep the builder's item list in step with the world.
+ *
+ * A GM who makes a custom prize expects to find it on the wheel immediately,
+ * not after remembering to press Refresh — the catalogue is cached for the
+ * session, so without this it would stay invisible until something dropped it.
+ *
+ * World items are folded in surgically. A compendium change only drops the
+ * cache, so the cost of re-indexing every pack is paid lazily, once, the next
+ * time the catalogue is actually wanted — importing a whole book would
+ * otherwise rebuild it hundreds of times.
+ */
+for (const [hook, apply] of [["createItem", upsertWorldItem], ["updateItem", upsertWorldItem],
+                             ["deleteItem", removeWorldItem]]) {
+  Hooks.on(hook, item => {
+    if (!game.user.isGM) return;
+    if (isWorldItem(item)) {
+      if (apply(item)) WheelBuilder.refreshCatalogue();
+      return;
+    }
+    // An item on an actor is inventory, not a candidate prize.
+    if (item?.pack) invalidateCatalogue();
+  });
+}
+
 /**
  * Offer the way back on the card that records the mistake.
  *

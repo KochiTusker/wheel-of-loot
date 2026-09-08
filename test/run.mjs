@@ -12,7 +12,7 @@
 
 // Installs the Foundry globals the pure modules touch. Imports hoist, so this
 // has to come first.
-import {installSettingsStub} from "./harness.mjs";
+import {installSettingsStub, installWorldStub} from "./harness.mjs";
 
 import {
   clampSlots, disperseSlots, labelBudget, labelFontSize, MAX_SLOTS, MIN_SLOTS,
@@ -20,6 +20,11 @@ import {
 } from "../scripts/core/wheel-data.js";
 import {distributeSlots, drawDistinct, planWheel, rarityWeight} from "../scripts/core/wheel-plan.js";
 import {GENERIC_ADAPTER} from "../scripts/systems/adapter.js";
+import {registerDnd5e} from "../scripts/systems/dnd5e.js";
+import {
+  buildCatalogue, cachedCatalogue, catalogueRow, invalidateCatalogue,
+  isWorldItem, removeWorldItem, upsertWorldItem
+} from "../scripts/core/catalogue.js";
 import {
   annotateDuplicates, completeness, duplicateStats, foldDuplicates,
   normaliseName, printingSignature, redundancySignature
@@ -36,13 +41,27 @@ import {
 
 let passed = 0;
 const failures = [];
+const queue = [];
 
+/**
+ * Register a check. Nothing runs until the end.
+ *
+ * Sequential, deliberately. Checks share module state - the catalogue cache and
+ * the game stub are both global - so letting async ones overlap made them race
+ * and leak results into each other.
+ */
 function check(name, fn) {
-  try {
-    fn();
-    passed++;
-  } catch (err) {
-    failures.push(`${name}: ${err.message}`);
+  queue.push({name, fn});
+}
+
+async function runAll() {
+  for (const {name, fn} of queue) {
+    try {
+      await fn();
+      passed++;
+    } catch (err) {
+      failures.push(`${name}: ${err.message}`);
+    }
   }
 }
 
@@ -709,7 +728,113 @@ check("a wheel weighted to nothing is caught rather than rolled", () => {
   assert(totalWeight(oddsEntries([[1, MIN_ODDS]])) > 0, "the minimum is still winnable");
 });
 
+
 /* -------------------------------------------- */
+/*  World items in the catalogue                 */
+/* -------------------------------------------- */
+
+/** A document shaped like the ones the Item hooks receive. */
+function fakeItem({uuid, name, parent = null, pack = null, rarity = null, book = "Homebrew"}) {
+  return {
+    documentName: "Item", uuid, name, parent, pack,
+    img: "art.webp", type: "consumable",
+    system: {rarity, price: {value: 10}, source: {book}, uses: {max: 1, recovery: []}}
+  };
+}
+
+/** A world holding one compendium item and whatever else is asked for. */
+async function worldWith(items) {
+  installSettingsStub(new Map());
+  registerDnd5e();
+  installWorldStub({
+    packs: [{
+      collection: "srd.items", label: "SRD Items",
+      entries: [{
+        _id: "p1", name: "Alchemist's Fire", img: "a.webp", type: "consumable",
+        system: {rarity: "common", price: {value: 50}, source: {book: "SRD"}, uses: {max: 1, recovery: []}}
+      }]
+    }],
+    items
+  });
+  invalidateCatalogue();
+  await buildCatalogue({force: true});
+}
+
+check("only the world's own Items are catalogue candidates", () => {
+  assert(isWorldItem(fakeItem({uuid: "Item.a", name: "Homebrew Potion"})), "a world item qualifies");
+  // Inventory belongs to a character; cataloguing it would offer a player their
+  // own torch back as a prize.
+  assert(!isWorldItem(fakeItem({uuid: "Actor.x.Item.b", name: "Torch", parent: {name: "A"}})),
+    "an item on an actor is inventory");
+  // Compendium items arrive through the index, not through this path.
+  assert(!isWorldItem(fakeItem({uuid: "Compendium.p.Item.c", name: "Rope", pack: "srd.items"})),
+    "a compendium item is indexed separately");
+  assert(!isWorldItem(null), "nothing is not an item");
+  assert(!isWorldItem({documentName: "Actor", uuid: "Actor.d"}), "an Actor is not an Item");
+});
+
+check("an item made in the world is available as a prize", async () => {
+  // The gap this closes: the catalogue is cached for the session, so without
+  // the hooks a GM's brand new item stayed invisible until they thought to
+  // press Refresh.
+  await worldWith([]);
+  eq(cachedCatalogue().map(r => r.name), ["Alchemist's Fire"], "only the pack item to begin with");
+
+  const made = fakeItem({uuid: "Item.k", name: "Bottled Kraken Ink", rarity: "rare"});
+  eq(upsertWorldItem(made), true, "the catalogue changed");
+  const row = catalogueRow("Item.k");
+  eq(row.name, "Bottled Kraken Ink");
+  eq(row.rarity, "rare", "resolved through the system adapter");
+  eq(row.source, "Homebrew", "its own source book, not the pack label");
+  eq(row.packId, "__world__", "filed under the world's items");
+});
+
+check("world items are kept in name order as they come and go", async () => {
+  await worldWith([]);
+  upsertWorldItem(fakeItem({uuid: "Item.z", name: "Zephyr Stone"}));
+  upsertWorldItem(fakeItem({uuid: "Item.a", name: "Abyssal Tar"}));
+  eq(cachedCatalogue().map(r => r.name),
+    ["Abyssal Tar", "Alchemist's Fire", "Zephyr Stone"], "sorted, not appended");
+
+  // Renaming replaces rather than duplicating.
+  upsertWorldItem({...fakeItem({uuid: "Item.z", name: "Aged Zephyr Stone"})});
+  eq(cachedCatalogue().filter(r => r.uuid === "Item.z").length, 1, "still one copy");
+
+  eq(removeWorldItem(fakeItem({uuid: "Item.z", name: "Aged Zephyr Stone"})), true);
+  eq(cachedCatalogue().map(r => r.name), ["Abyssal Tar", "Alchemist's Fire"]);
+  eq(removeWorldItem(fakeItem({uuid: "Item.z", name: "gone"})), false, "removing twice is harmless");
+});
+
+check("actor inventory and compendium items never enter the catalogue", async () => {
+  await worldWith([]);
+  const before = cachedCatalogue().length;
+  eq(upsertWorldItem(fakeItem({uuid: "Actor.a.Item.t", name: "Torch", parent: {name: "A"}})), false);
+  eq(upsertWorldItem(fakeItem({uuid: "Compendium.p.Item.r", name: "Rope", pack: "srd.items"})), false);
+  eq(cachedCatalogue().length, before, "nothing was added");
+});
+
+check("catalogue updates do nothing before the catalogue exists", () => {
+  invalidateCatalogue();
+  // A hook can fire before any builder has been opened. That must not build an
+  // index nobody asked for, and must not throw.
+  eq(upsertWorldItem(fakeItem({uuid: "Item.z", name: "Zed"})), false);
+  eq(removeWorldItem(fakeItem({uuid: "Item.z", name: "Zed"})), false);
+  eq(cachedCatalogue(), []);
+});
+
+check("a new world item is folded into the duplicate grouping", async () => {
+  await worldWith([]);
+  upsertWorldItem(fakeItem({uuid: "Item.f", name: "Alchemist's Fire", rarity: "common"}));
+  const rows = cachedCatalogue().filter(r => normaliseName(r.name) === "alchemist's fire");
+  eq(rows.length, 2, "both copies are present");
+  assert(rows.every(r => r.variants === 2), "each knows it has a twin");
+  // Different books, so neither is a redundant copy of the other.
+  assert(rows.every(r => !r.redundant), "a homebrew copy is not a duplicate of the SRD one");
+});
+
+/* -------------------------------------------- */
+
+await runAll();
 
 if (failures.length) {
   console.error(`\n${failures.length} FAILED, ${passed} passed\n`);

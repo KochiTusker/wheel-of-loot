@@ -36,6 +36,12 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   look** in the builder. A blank field means "follow the world setting", and the
   placeholder shows what that currently is. The launcher marks a customised
   wheel with a ✦. Rules are enforced on the GM, not just hidden on the client.
+- **Items you make in the game appear straight away.** The item list is cached
+  for the session, so a newly created world item used to stay invisible until
+  you remembered to press Refresh. World items are now folded in as they are
+  created, renamed or deleted. Actor inventory and compendium items are left
+  alone — a compendium change only drops the cache, so re-indexing is paid once,
+  lazily, rather than hundreds of times during an import.
 - **Undo the last win.** A quiet button on the result card takes the prize back
   and refunds the spin. One deep, GM only, and it verifies the item is still the
   one the wheel created before removing anything.

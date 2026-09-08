@@ -56,3 +56,24 @@ export function installSettingsStub(store, menus = []) {
   };
   return {store, menus, definitions};
 }
+
+/**
+ * Add a world to the settings stub: compendium packs and the Items directory.
+ *
+ * Lets the catalogue be exercised through `buildCatalogue` rather than by
+ * reaching into its cache, so the tests drive the same path the module does.
+ *
+ * @param {object} [world]
+ * @param {object[]} [world.packs]  [{collection, label, entries}]
+ * @param {object[]} [world.items]  World Item documents.
+ */
+export function installWorldStub({packs = [], items = []} = {}) {
+  globalThis.game.packs = packs.map(p => ({
+    collection: p.collection,
+    documentName: "Item",
+    metadata: {label: p.label},
+    getIndex: async () => p.entries
+  }));
+  globalThis.game.items = items;
+  return globalThis.game;
+}

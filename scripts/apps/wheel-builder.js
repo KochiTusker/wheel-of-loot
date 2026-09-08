@@ -36,6 +36,9 @@ const USE_LABEL = {
 const CATALOGUE_CAP = 300;
 
 export class WheelBuilder extends ApplicationV2 {
+  /** @type {WheelBuilder|null} The open builder, if there is one. */
+  static current = null;
+
   static DEFAULT_OPTIONS = {
     id: "wheel-of-loot-builder",
     classes: ["wol-builder"],
@@ -297,6 +300,29 @@ export class WheelBuilder extends ApplicationV2 {
   _replaceHTML(result, content) {
     content.replaceChildren(result);
     this.#hydrate(content);
+    WheelBuilder.current = this;
+  }
+
+  /** @inheritDoc */
+  async close(options) {
+    if (WheelBuilder.current === this) WheelBuilder.current = null;
+    return super.close(options);
+  }
+
+  /**
+   * Redraw the item list after the world's Items have changed underneath it.
+   *
+   * Only the catalogue side: the wheel the GM is assembling is unsaved work and
+   * must not be disturbed by somebody editing an item in another window.
+   */
+  static refreshCatalogue() {
+    const app = WheelBuilder.current;
+    if (!app?.element) return;
+    try {
+      app.#renderCatalogue(app.element);
+    } catch (err) {
+      console.warn("Wheel of Loot | could not refresh the item list", err);
+    }
   }
 
   /** Wire filters, size control, drag/drop and live inputs once the DOM is in place. */
