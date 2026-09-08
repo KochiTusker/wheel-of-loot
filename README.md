@@ -204,13 +204,6 @@ six-second spin but keeps a beat so the result still reads as an outcome.
 | **[Security](SECURITY.md)** | The threat model, and why the trust boundary is the socket |
 | **[Changelog](CHANGELOG.md)** | What changed, and when |
 
-## Upgrading from `sbts-loot-wheel`
-
-This module was called `sbts-loot-wheel` before 2.0.0. On first load as a GM it
-offers to bring across the old spin ledger and re-stamp items that were won from
-a wheel. The migration only ever **adds** — nothing is deleted, renamed or
-overwritten — and declining just defers the offer to next session.
-
 ## Licence
 
 MIT. See [LICENSE](LICENSE). The module ships no artwork of its own: every icon
