@@ -28,7 +28,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       # The gate. A tag that cannot pass every check CI runs should not become
       # a release, so the list here mirrors ci.yml rather than testing less.
