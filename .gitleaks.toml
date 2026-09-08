@@ -1,0 +1,47 @@
+# Gitleaks configuration for Wheel of Loot.
+#
+# This module has no runtime secrets of its own — it makes no network calls,
+# holds no API keys, and talks to nothing outside the Foundry world it runs in.
+# The scan is therefore not defending a credential store; it is defending
+# against the ordinary accident of a maintainer pasting something into a commit
+# while debugging, in a repository that is meant to be public.
+#
+# Run over every push and pull request by .github/workflows/ci.yml, and over the
+# full history before a release tag is cut.
+
+[extend]
+# Build on gitleaks' default ruleset — roughly 150 community-maintained
+# patterns for the credential shapes that actually get leaked.
+useDefault = true
+
+[[rules]]
+id = "wol-personal-email"
+description = "A maintainer's personal address, which belongs in the commit trailer as a GitHub noreply and nowhere else"
+# Deliberately narrow: any address at a consumer mail host, in tracked content.
+regex = '''[A-Za-z0-9._%+-]+@(gmail|googlemail|outlook|hotmail|yahoo|proton(mail)?|icloud)\.[a-z.]{2,}'''
+tags = ["pii", "email"]
+
+[[rules]]
+id = "wol-private-host"
+description = "A LAN address or private hostname from a maintainer's own setup"
+# A module that reaches no network should never name one. This has bitten this
+# author before: a raw-IP Foundry origin broke embedded video, and the address
+# itself is a detail of somebody's home network.
+regex = '''\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b'''
+tags = ["pii", "network"]
+
+[allowlist]
+description = "Documentation that discusses these patterns rather than containing them"
+paths = [
+  # The security policy names the shapes it defends against.
+  '''^SECURITY\.md$''',
+  # This file.
+  '''^\.gitleaks\.toml$''',
+]
+regexes = [
+  # The GitHub noreply address is the intended commit identity, not a leak.
+  '''[0-9]+\+[A-Za-z0-9-]+@users\.noreply\.github\.com''',
+  # Foundry's own loopback default, named in docs and in launch config.
+  '''127\.0\.0\.1''',
+  '''localhost:\d+''',
+]

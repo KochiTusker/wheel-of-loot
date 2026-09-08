@@ -1,0 +1,62 @@
+# Every push and pull request runs the same gates a release does, so a tag can
+# never be the first time a problem is noticed.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Rapid pushes during active work would otherwise queue one run per commit and
+# mail a failure for each. Collapse a burst to the branch tip; cancelled runs
+# do not send failure mail.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks walks history rather than the working tree, so a shallow
+          # checkout would silently scan almost nothing.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Manifest is valid JSON and self-consistent
+        run: |
+          node -e '
+            const fs = require("fs");
+            const m = JSON.parse(fs.readFileSync("module.json", "utf8"));
+            for (const f of [...m.esmodules, ...m.styles, ...m.languages.map(l => l.path)]) {
+              if (!fs.existsSync(f)) { console.error(`module.json points at a missing file: ${f}`); process.exit(1); }
+            }
+            if (m.id !== "wheel-of-loot") { console.error("unexpected module id"); process.exit(1); }
+            console.log(`module.json ok — ${m.id} ${m.version}`);
+          '
+
+      - name: Localisation is complete in both directions
+        run: node tools/check-i18n.mjs
+
+      - name: No unused imports
+        run: node tools/check-imports.mjs
+
+      - name: Tests
+        run: node test/run.mjs
+
+      # Last, because a failure here is about the repository rather than the
+      # code, and the code result is the more useful one to see first.
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
