@@ -1162,7 +1162,12 @@ export class WheelBuilder extends ApplicationV2 {
       const existing = this.table.results.map(r => r.id);
       if (existing.length) await this.table.deleteEmbeddedDocuments("TableResult", existing);
       await this.table.createEmbeddedDocuments("TableResult", results);
-      await this.table.update({formula: `1d${cursor - 1}`});
+      await this.table.update({
+        formula: `1d${cursor - 1}`,
+        // Saying so is what lets the manager and the launcher tell a wheel from
+        // an encounter table in a world full of both.
+        [`flags.${MODULE_ID}.isWheel`]: true
+      });
       this.dirty = false;
       ui.notifications.info(t("Notify.Saved", {
         name: this.table.name, wedges: results.length, slots: cursor - 1

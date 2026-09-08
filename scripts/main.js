@@ -20,6 +20,7 @@ import {WheelBuilder} from "./apps/wheel-builder.js";
 import {openLauncher, pickTable} from "./apps/launcher.js";
 import {registerDnd5e} from "./systems/dnd5e.js";
 import {WheelSettings} from "./apps/settings-menu.js";
+import {WheelManager} from "./apps/wheel-manager.js";
 import {runMigration} from "./core/migrate.js";
 import {describeLastGrant, lastGrant, undoLastGrant} from "./core/undo.js";
 import {invalidateCatalogue, isWorldItem, removeWorldItem, upsertWorldItem} from "./core/catalogue.js";
@@ -188,8 +189,18 @@ export async function undo() {
   return false;
 }
 
+/** Open the wheel manager. GM only. */
+export function manage() {
+  return WheelManager.open({
+    build, createTable,
+    // Presenting goes through the launcher, because a wheel presented without
+    // handing anybody a spin is one nobody can turn.
+    launch: table => openLauncher({present, getCredits, grant, createTable, build, table})
+  });
+}
+
 /** Everything a macro or another module may reasonably call. */
-const api = {present, build, createTable, grant, getCredits, undo};
+const api = {present, build, createTable, grant, getCredits, undo, manage};
 
 /* -------------------------------------------- */
 /*  Registration                                */
@@ -302,7 +313,7 @@ Hooks.on("renderRollTableDirectory", (app, element) => {
   button.type = "button";
   button.className = "wol-open";
   button.innerHTML = `<i class="fa-solid fa-arrows-spin" inert></i><span>${t("Control.Open")}</span>`;
-  button.addEventListener("click", () => openLauncher({present, getCredits, grant, createTable, build}));
+  button.addEventListener("click", () => manage());
   actions.append(button);
 });
 

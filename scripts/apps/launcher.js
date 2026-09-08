@@ -13,6 +13,7 @@
 import {slotCount, validateTable} from "../core/wheel-data.js";
 import {t} from "../core/constants.js";
 import {wheelOverrides} from "../core/settings.js";
+import {isWheel} from "../core/wheels.js";
 
 /** Players who can actually click a button right now, connected ones first. */
 function candidateUsers() {
@@ -21,8 +22,22 @@ function candidateUsers() {
     .sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
 }
 
+/**
+ * The tables worth offering as wheels.
+ *
+ * A world of encounter tables, treasure tables and name generators should not
+ * present all of them here. Anything the module has saved says so explicitly,
+ * and anything with slot ranges counts anyway — but if that leaves nothing,
+ * fall back to every table rather than an empty dropdown, because a GM who has
+ * built a wheel by hand should still be able to reach it.
+ */
+function wheelTables() {
+  const wheels = game.tables.contents.filter(isWheel);
+  return wheels.length ? wheels : game.tables.contents;
+}
+
 function tableOptions(selected = null) {
-  return game.tables.contents
+  return wheelTables()
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(table => {
       const slots = slotCount(table);
@@ -84,7 +99,7 @@ export async function pickTable(title, label) {
  * @param {() => Promise<RollTable|null>} api.createTable           New-wheel flow.
  * @param {(table: RollTable) => Promise<any>} api.build            Builder opener.
  */
-export async function openLauncher({present, getCredits, grant, createTable, build}) {
+export async function openLauncher({present, getCredits, grant, createTable, build, table = null}) {
   if (!game.user.isGM) return;
 
   // With no tables at all, the only useful thing to offer is making one — so
@@ -122,7 +137,7 @@ export async function openLauncher({present, getCredits, grant, createTable, bui
       <div class="form-group">
         <label for="wol-table">${t("Launcher.Table")}</label>
         <div class="wol-table-pick">
-          <select id="wol-table" name="table">${tableOptions()}</select>
+          <select id="wol-table" name="table">${tableOptions(table?.uuid ?? null)}</select>
           <button type="button" class="wol-b-ghost" data-role="newwheel"
             data-tooltip="${t("Launcher.NewHint")}">
             <i class="fa-solid fa-circle-plus"></i> ${t("Launcher.New")}

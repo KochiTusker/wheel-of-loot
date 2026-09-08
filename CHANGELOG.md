@@ -36,6 +36,13 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   browse buttons for the hub image and win sound. The grouped form remains, with
   the palette preview and the wheel preview, and is still what per-wheel
   overrides use.
+- **A wheel manager.** Every wheel in the world, each drawn as a thumbnail of
+  itself, with badges for broken, looted dry, own look, and limited wedges.
+  Present, build, restyle, restock, duplicate, rename, delete. Wheels now
+  declare themselves, so the launcher offers wheels rather than every RollTable.
+- **Limited prizes.** A wedge can carry a stock count; it is struck through when
+  it runs out, weighs nothing so the roll cannot reach it, and the count is
+  written back to the table so a hoard stays looted.
 - **Per-wheel appearance and rules.** Any wheel can override the world settings:
   its own palette, hub, speaker, confetti, backdrop, spin duration and rotations,
   win sound, and its own rules for gifting, refusing, whether the GM needs a

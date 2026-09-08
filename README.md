@@ -35,6 +35,28 @@ Works in any game system. Knows a little extra about D&D 5e.
 A wheel is an ordinary RollTable, so you can also open the builder from the
 table's own sheet header.
 
+## The wheel manager
+
+The sidebar button opens it: every wheel in the world, each drawn as a small
+picture of itself, because four hoards are indistinguishable by name and obvious
+at a glance as pictures. Badges say which is broken, which has been looted dry,
+which carries its own look, and how many wedges are limited.
+
+From each row: present it, open the builder, set its look and rules, restock it,
+duplicate it, rename it, delete it. Duplicating carries the odds, jackpot and
+stock across, so "make me another like that one" is one click.
+
+## Limited prizes
+
+A wedge can carry a count instead of an endless supply. It is spent when the
+prize is actually *taken* — a refused prize is still on offer to the next
+spinner — and when it runs out the wedge is struck through on the rim rather
+than vanishing. The hoard visibly empties as the party loots it, and the wheel
+never reshapes itself mid-session.
+
+The count is written back to the table, so a hoard stays looted between
+sessions. **Restock** in the manager puts every limited wedge back in one go.
+
 ## The builder
 
 **Everything classified as an Item** is available: every Item compendium, plus

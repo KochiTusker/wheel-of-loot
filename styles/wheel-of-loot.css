@@ -1164,3 +1164,97 @@
 }
 
 .wol-b-row .stock.out ~ .chance { text-decoration: line-through; opacity: 0.4; }
+
+/* ---- Wheel manager ---- */
+
+.wol-manager-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 0.5rem;
+}
+
+.wol-m-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.35);
+}
+
+.wol-m-head .hint { margin: 0; font-size: 0.85rem; opacity: 0.75; }
+.wol-m-head button { width: auto; padding: 0.35rem 0.9rem; }
+
+.wol-m-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wol-m-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.35rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.18);
+}
+
+.wol-m-row:hover { background: rgba(128, 128, 128, 0.12); }
+
+/* The thumbnail is the point of the list: four hoards are indistinguishable by
+   name and obvious at a glance as pictures. */
+.wol-m-row .thumb {
+  flex: 0 0 auto;
+  width: 60px;
+  height: 60px;
+}
+
+.wol-m-row .thumb svg { width: 100%; height: 100%; }
+
+.wol-m-row .thumb .empty {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px dashed rgba(128, 128, 128, 0.45);
+  opacity: 0.5;
+}
+
+.wol-m-row .about { flex: 1 1 auto; min-width: 0; }
+.wol-m-row .name { margin: 0; font-weight: 700; font-size: 0.95rem; }
+.wol-m-row .meta { margin: 0.1rem 0 0; font-size: 0.76rem; opacity: 0.65; }
+.wol-m-row .tags { margin: 0.2rem 0 0; display: flex; gap: 0.3rem; flex-wrap: wrap; }
+
+.wol-m-row .tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  opacity: 0.85;
+}
+
+.wol-m-row .tag.bad     { color: #c0563a; }
+.wol-m-row .tag.spent   { color: #9aa4b2; }
+.wol-m-row .tag.own     { color: #c48b1f; }
+.wol-m-row .tag.limited { color: #4a9fd8; }
+
+.wol-m-row .acts { flex: 0 0 auto; display: flex; gap: 0.2rem; }
+
+.wol-m-row .acts button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.wol-m-row .acts button:disabled { opacity: 0.25; cursor: default; }
+.wol-m-row .acts .rm { color: #c0563a; }
+.wol-m-row .acts .rm:hover { background: rgba(190, 70, 60, 0.3); }
