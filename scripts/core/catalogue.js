@@ -10,8 +10,13 @@
  *
  * Building this touches every pack, so it is cached on first use and only
  * rebuilt when something asks it to be.
+ *
+ * Duplicate handling lives in `dedupe.js`; this file's job is to normalise
+ * every source into the same row shape so that logic has something consistent
+ * to work on, whatever system is running.
  */
 
+import {annotateDuplicates} from "./dedupe.js";
 import {systemAdapter} from "../systems/adapter.js";
 
 /** Pack id used for the world's own Items directory, which has no collection. */
@@ -24,15 +29,17 @@ let cache = null;
  * @typedef {object} CatalogueRow
  * @property {string}  uuid
  * @property {string}  name
+ * @property {string}  nameKey     Normalised name, for duplicate grouping.
  * @property {string}  img
  * @property {string}  itemType    The document's `type`.
  * @property {?string} rarity      Adapter-resolved; null in systems without rarity.
- * @property {string}  source      Book, or the compendium's label as a fallback.
+ * @property {string}  source      Book or publication, adapter-resolved.
  * @property {string}  profile     "single" | "charges" | "recharge"
  * @property {string}  packId
  * @property {string}  packLabel
  * @property {number}  variants    How many rows share this name.
- * @property {boolean} likelyDuplicate
+ * @property {boolean} redundant   Same printing, same pack, listed more than once.
+ * @property {number}  score       Completeness, for choosing a representative.
  */
 
 /** Drop the cached index so the next build re-reads everything. */
@@ -54,13 +61,7 @@ export function cachedCatalogue() {
  */
 function toRow(entry, uuid, packId, packLabel) {
   const adapter = systemAdapter();
-  // The source book is what tells a 2014 printing from its 2024 reprint;
-  // without it, real variants look like accidental duplicates. Plenty of items
-  // record no book, so fall back to the pack's own name — that still separates
-  // SRD 5.1 from a 2024 Equipment reprint.
-  const book = foundry.utils.getProperty(entry, "system.source.book")
-    || foundry.utils.getProperty(entry, "system.source.custom")
-    || "";
+  const book = adapter.sourceOf(entry);
   return {
     uuid,
     name: entry.name,
@@ -68,6 +69,8 @@ function toRow(entry, uuid, packId, packLabel) {
     itemType: entry.type,
     sub: foundry.utils.getProperty(entry, "system.type.value") ?? null,
     rarity: adapter.rarityOf(entry),
+    // Fall back to the pack's own name so a system that records no book at all
+    // still separates one compendium's copy from another's.
     source: book || packLabel,
     book,
     price: foundry.utils.getProperty(entry, "system.price.value") ?? null,
@@ -87,8 +90,7 @@ function toRow(entry, uuid, packId, packLabel) {
  */
 export async function buildCatalogue({force = false} = {}) {
   if (cache && !force) return cache;
-  const adapter = systemAdapter();
-  const fields = adapter.indexFields;
+  const fields = systemAdapter().indexFields;
   const rows = [];
 
   for (const pack of game.packs) {
@@ -114,24 +116,7 @@ export async function buildCatalogue({force = false} = {}) {
   }
 
   rows.sort((a, b) => a.name.localeCompare(b.name));
-
-  // Same name in more than one place is usually a reprint, not a mistake —
-  // count them so a row can say "4 variants" and invite a comparison.
-  //
-  // A *redundant* copy is a narrower thing: same name from the same book in the
-  // same compendium. Comparing across packs would flag every SRD or reprint
-  // edition, which is expected and not a fault.
-  const byName = new Map();
-  const bySignature = new Map();
-  const sigOf = r => `${r.name}|${r.packId}|${r.book}|${r.rarity}|${r.price}`;
-  for (const row of rows) {
-    byName.set(row.name, (byName.get(row.name) ?? 0) + 1);
-    bySignature.set(sigOf(row), (bySignature.get(sigOf(row)) ?? 0) + 1);
-  }
-  for (const row of rows) {
-    row.variants = byName.get(row.name);
-    row.likelyDuplicate = bySignature.get(sigOf(row)) > 1;
-  }
+  annotateDuplicates(rows);
 
   cache = rows;
   return rows;
@@ -160,4 +145,11 @@ export function cataloguePacks() {
       if (b.id === WORLD_PACK_ID) return 1;
       return a.label.localeCompare(b.label);
     });
+}
+
+/** Every distinct source book present, for the builder's filter. */
+export function catalogueSources() {
+  const seen = new Set();
+  for (const row of cachedCatalogue()) if (row.book) seen.add(row.book);
+  return [...seen].sort((a, b) => a.localeCompare(b));
 }

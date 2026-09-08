@@ -14,11 +14,11 @@
 import {burst} from "../lib/confetti.js";
 import {labelBudget, labelFontSize, sliceColours} from "../core/wheel-data.js";
 import {MODULE_ID, t} from "../core/constants.js";
-import {SETTING_CREDITS, ticksEnabled} from "../core/ledger.js";
+import {
+  S, allowGift, allowRefuse, confettiEnabled, gmNeedsCredit, hubIcon,
+  palette, spinTurns, tickVolume, ticksEnabled, winSound
+} from "../core/settings.js";
 import {systemAdapter} from "../systems/adapter.js";
-
-/** Full turns before the wheel settles, so a spin reads as a spin. */
-const TURNS = 6;
 
 /**
  * Spins this client's user still has.
@@ -28,7 +28,7 @@ const TURNS = 6;
  * it rolls, so a tampered client gains nothing by lying to itself here.
  */
 function myCredits() {
-  const ledger = game.settings.get(MODULE_ID, SETTING_CREDITS) ?? {};
+  const ledger = game.settings.get(MODULE_ID, S.CREDITS) ?? {};
   return Number(ledger[game.user.id] ?? 0);
 }
 
@@ -116,6 +116,7 @@ function inkFor(ink, background) {
  */
 function tickTrack(durationMs) {
   if (!ticksEnabled()) return () => {};
+  const volume = tickVolume();
   let ctx;
   try {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -131,7 +132,8 @@ function tickTrack(durationMs) {
       const gain = ctx.createGain();
       osc.type = "square";
       osc.frequency.value = 900 + (Math.random() * 180);
-      gain.gain.setValueAtTime(0.035, ctx.currentTime);
+      // 0.1 x the default 0.35 reproduces v1's fixed 0.035 gain exactly.
+      gain.gain.setValueAtTime(0.1 * volume, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.0008, ctx.currentTime + 0.05);
       osc.connect(gain).connect(ctx.destination);
       osc.start();
@@ -170,9 +172,13 @@ export class LootWheel {
     return game.user.id === this.spinnerId;
   }
 
-  /** The GM can always spin; a player must hold a credit. */
+  /**
+   * A player must hold a credit. A GM normally need not, but a table that wants
+   * the GM to play by the same rules can say so.
+   */
   get canSpin() {
-    return game.user.isGM || myCredits() > 0;
+    if (game.user.isGM && !gmNeedsCredit()) return true;
+    return myCredits() > 0;
   }
 
   /** Entry for a given slice index. */
@@ -254,7 +260,7 @@ export class LootWheel {
         <div class="wol-wheelbox">
           ${this.#wheelSvg()}
           <div class="wol-pointer" aria-hidden="true"></div>
-          <div class="wol-hub"><img alt="" src="icons/svg/chest.svg"></div>
+          <div class="wol-hub"><img alt="" src="${foundry.utils.escapeHTML(hubIcon())}"></div>
         </div>
         <footer class="wol-actions"></footer>
       </div>
@@ -281,7 +287,7 @@ export class LootWheel {
     const outer = 430;
     const inner = 118;
     const sweep = 360 / total;
-    const backgrounds = sliceColours(total);
+    const backgrounds = sliceColours(total, palette());
     const budget = labelBudget(total);
     const fontSize = labelFontSize(total);
 
@@ -340,7 +346,7 @@ export class LootWheel {
       return;
     }
 
-    const ledger = game.settings.get(MODULE_ID, SETTING_CREDITS) ?? {};
+    const ledger = game.settings.get(MODULE_ID, S.CREDITS) ?? {};
     const holders = Object.entries(ledger)
       .filter(([, n]) => n > 0)
       .map(([id, n]) => {
@@ -366,7 +372,7 @@ export class LootWheel {
         spin.className = "wol-btn wol-btn-spin";
         // A GM spins without spending anything, so show a badge that says so
         // rather than a misleading "0".
-        const badge = mine > 0 ? String(mine) : (game.user.isGM ? t("Wheel.GMBadge") : "0");
+        const badge = mine > 0 ? String(mine) : (game.user.isGM && !gmNeedsCredit() ? t("Wheel.GMBadge") : "0");
         spin.innerHTML = `<i class="fa-solid fa-arrows-spin"></i> ${t("Wheel.Spin")}
           <span class="wol-credit">${badge}</span>`;
         spin.addEventListener("click", () => this.#onSpinClicked(spin), {once: true});
@@ -436,7 +442,7 @@ export class LootWheel {
     const currentMod = (((this.rotation % 360) + 360) % 360);
     let advance = desired - currentMod;
     if (advance < 0) advance += 360;
-    const final = this.rotation + (360 * TURNS) + advance;
+    const final = this.rotation + (360 * spinTurns()) + advance;
     this.rotation = final;
 
     this.stopTicks = tickTrack(this.duration);
@@ -484,8 +490,11 @@ export class LootWheel {
     desc.textContent = entry.description || "";
     desc.hidden = !entry.description;
 
-    const canvas = this.root.querySelector(".wol-confetti");
-    this.stopConfetti = burst(canvas, {originX: 0.5, originY: 0.42, count: 220});
+    if (confettiEnabled()) {
+      const canvas = this.root.querySelector(".wol-confetti");
+      this.stopConfetti = burst(canvas, {originX: 0.5, originY: 0.42, count: 220});
+    }
+    this.#playWinSound();
 
     this.#renderRevealActions();
   }
@@ -506,25 +515,56 @@ export class LootWheel {
         box.append(accept);
       }
 
-      const gift = document.createElement("button");
-      gift.type = "button";
-      gift.className = "wol-btn wol-btn-gift";
-      gift.innerHTML = `<i class="fa-solid fa-gift"></i> ${t("Wheel.Gift")}`;
-      gift.addEventListener("click", () => this.#onGift(gift));
-      box.append(gift);
+      if (allowGift()) {
+        const gift = document.createElement("button");
+        gift.type = "button";
+        gift.className = "wol-btn wol-btn-gift";
+        gift.innerHTML = `<i class="fa-solid fa-gift"></i> ${t("Wheel.Gift")}`;
+        gift.addEventListener("click", () => this.#onGift(gift));
+        box.append(gift);
+      }
 
-      const reject = document.createElement("button");
-      reject.type = "button";
-      reject.className = "wol-btn wol-btn-reject";
-      reject.innerHTML = `<i class="fa-solid fa-xmark"></i> ${t("Wheel.Refuse")}`;
-      reject.addEventListener("click", () => this.#confirmReject(reject), {once: true});
-      box.append(reject);
+      if (allowRefuse()) {
+        const reject = document.createElement("button");
+        reject.type = "button";
+        reject.className = "wol-btn wol-btn-reject";
+        reject.innerHTML = `<i class="fa-solid fa-xmark"></i> ${t("Wheel.Refuse")}`;
+        reject.addEventListener("click", () => this.#confirmReject(reject), {once: true});
+        box.append(reject);
+      }
+
+      // Turning both off would leave the spinner holding a prize with no way
+      // to take it, so Keep is forced back on when nothing else remains.
+      if (!box.children.length) {
+        const accept = document.createElement("button");
+        accept.type = "button";
+        accept.className = "wol-btn wol-btn-accept";
+        accept.innerHTML = `<i class="fa-solid fa-check"></i> ${t("Wheel.Keep")}`;
+        accept.addEventListener("click", () => this.#resolve(true), {once: true});
+        box.append(accept);
+      }
       return;
     }
 
     box.innerHTML = `<p class="wol-wait">${
       t("Wheel.Deciding", {name: foundry.utils.escapeHTML(this.spinnerName ?? t("Wheel.TheSpinner"))})}</p>`;
     if (game.user.isGM) box.append(this.#cancelButton());
+  }
+
+  /**
+   * Optional flourish when the wheel lands.
+   *
+   * Failure here must never block the reveal — an unplayable file is a cosmetic
+   * problem, not a reason the prize should not appear.
+   */
+  #playWinSound() {
+    const src = winSound();
+    if (!src) return;
+    try {
+      foundry.audio.AudioHelper.play({src, volume: 0.7, autoplay: true, loop: false}, false);
+    } catch (err) {
+      console.warn("Wheel of Loot | could not play the win sound", err);
+    }
   }
 
   /* ---------------------------------------- */

@@ -6,7 +6,7 @@
  * `system.rarity`, `system.uses` or `system.currency` directly.
  */
 
-import {GENERIC_ADAPTER, registerSystemAdapter} from "./adapter.js";
+import {registerSystemAdapter} from "./adapter.js";
 
 /** Rarity -> the colour its *name* is printed in on the wheel. */
 const RARITY_COLOURS = {
@@ -82,6 +82,9 @@ export const DND5E_ADAPTER = {
 
   useProfile,
 
+  sourceOf: entry => (foundry.utils.getProperty(entry, "system.source.book")
+    || foundry.utils.getProperty(entry, "system.source.custom") || "").trim(),
+
   parseCurrency(name) {
     const match = /^\s*(\d[\d,]*)\s*(gp|gold|sp|silver|cp|copper|ep|electrum|pp|platinum)\b/i.exec(name ?? "");
     if (!match) return null;
@@ -100,11 +103,16 @@ export const DND5E_ADAPTER = {
 
   /**
    * Gifting into an NPC or a stray actor is never what is meant, and dnd5e is
-   * explicit about which type is a player character — so require that, on top
-   * of the generic "somebody is playing them" check.
+   * explicit about which type is a player character — so the type alone is the
+   * check.
+   *
+   * Deliberately *not* also requiring that a user currently has them assigned.
+   * The gift dialog only ever offers assigned characters anyway, so the extra
+   * condition would buy nothing, and it would refuse a legitimate target whose
+   * player happens to be unassigned at that moment.
    */
   isRewardable(actor) {
-    return actor?.type === "character" && GENERIC_ADAPTER.isRewardable(actor);
+    return actor?.type === "character";
   }
 };
 

@@ -23,20 +23,14 @@ Works in any game system. Knows a little extra about D&D 5e.
 
 ## Getting started
 
-1. Enable the module. Three tools appear under the **Token** scene controls
-   (GM only):
-
-   | Tool | What it does |
-   | --- | --- |
-   | ⟳ **Wheel of Loot** | Pick a table, hand out spins, present it to the table |
-   | ⚙ **Build a Wheel** | Open the builder on an existing table |
-   | ⊕ **New Wheel Table** | Create a table and start building |
-
-2. Press **New Wheel Table**, name it, pick a size.
+1. Enable the module. A single **Wheel of Loot** button appears in the
+   **RollTables** sidebar, beside Create RollTable. Everything the module does
+   is reached from there — it adds nothing to the scene controls.
+2. Press it, then **New wheel** next to the table dropdown. Name it, pick a size.
 3. In the builder, filter the item list on the left and either drag prizes over
    or press **Roll a wheel**.
-4. **Save to table**, then **Wheel of Loot** → give someone a spin → **Present
-   to the table**.
+4. **Save to table**, then reopen the launcher → give someone a spin →
+   **Present to the table**.
 
 A wheel is an ordinary RollTable, so you can also open the builder from the
 table's own sheet header.
@@ -45,8 +39,25 @@ table's own sheet header.
 
 **Everything classified as an Item** is available: every Item compendium, plus
 your world's own Items directory — so homebrew and anything you have dragged out
-of a pack shows up alongside the official content. Filter by name, type, rarity
-and source; expand any row to read what it actually does before committing.
+of a pack shows up alongside the official content. Filter by name, type, rarity,
+compendium and source book; expand any row to read what it actually does before
+committing.
+
+**Duplicates are handled properly.** A world with several imported books has the
+same item in it many times over, and a browser that lists all eleven copies is
+useless. Three modes, and the default is the middle one:
+
+| Mode | What it does |
+| --- | --- |
+| **Show every copy** | No folding at all |
+| **Hide exact duplicates** | Drops only the same printing listed twice in the same compendium — nothing is lost |
+| **One row per item** *(default)* | One row per distinct name; the badge shows how many printings exist, and clicking it lists them so you can add a specific one |
+
+The distinction matters: four "Dust of Dryness" entries across four books are
+*not* interchangeable — the 2014 printing has one use, the SRD one has ten — so
+variants are always collapsed into something you can expand, never discarded.
+Only genuinely identical rows are hidden. This works off whatever your system
+records, so it degrades sensibly in a world with no rarities or source books.
 
 **Choose the wheel's size.** Presets from 12 to 96 slices, or any number from 2
 to 120. Slice colouring, label length and type size all adapt, and the wheel
@@ -124,11 +135,35 @@ wheel.getCredits();                         // { userId: spinsRemaining }
 
 ## Settings
 
-| Setting | Scope | Default |
+Spin duration, default wheel size and the tick sound sit directly in Foundry's
+module settings. Everything else lives behind **Configure the wheel**, grouped
+into four tabs.
+
+| | Setting | Default |
 | --- | --- | --- |
-| Spin duration | World | 6s |
-| Default wheel size | World | 64 |
-| Fairground tick sound | Client | on |
+| **Appearance** | Slice colours — six themes or your own hex list, with a live preview | Fairground |
+| | Hub image | `icons/svg/chest.svg` |
+| | Chat card speaker | "The Wheel" |
+| | Confetti on a win | on |
+| **Spin** | Duration | 6s |
+| | Full rotations | 6 |
+| | Tick volume *(per client)* | 0.35 |
+| | Win sound | none |
+| **Rules** | Allow gifting | on |
+| | Allow refusing | on |
+| | The GM needs a spin too | off |
+| | Close when the spins run out | on |
+| | Result card — everyone / GM only / none | everyone |
+| **Builder** | Default wheel size | 64 |
+| | Coin amounts | 10 … 1000 |
+| | Coin denomination | `gp` |
+
+**Every default reproduces the module's pre-2.0 behaviour exactly**, so upgrading
+changes nothing until you change something. That promise is pinned by a test.
+
+A silver-standard campaign sets the denomination to `sp`; a horror game takes the
+Midnight palette, turns off confetti and whispers the result card to the GM; a
+table that wants every spin binding turns off refusing.
 
 ## Development
 

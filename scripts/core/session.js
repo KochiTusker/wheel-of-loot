@@ -23,7 +23,8 @@
  */
 
 import {MODULE_ID, t} from "./constants.js";
-import {creditsFor, debit, spinDuration, totalCredits} from "./ledger.js";
+import {creditsFor, debit, totalCredits} from "./ledger.js";
+import {autoClose, chatCardMode, gmNeedsCredit, spinDuration, wheelSpeaker} from "./settings.js";
 import {systemAdapter} from "../systems/adapter.js";
 import {callOwner, socket, tell} from "./socket.js";
 
@@ -106,10 +107,11 @@ export async function requestSpin(sessionId) {
   const user = game.users.get(caller);
   if (!user) return;
 
-  const isGM = user.isGM;
+  // A GM normally spins for free; when the table has asked for it, they are
+  // treated exactly like a player for both the credit check and the debit.
+  const isGM = user.isGM && !gmNeedsCredit();
   const held = creditsFor(caller);
 
-  // The GM may always spin; a player must hold a credit.
   if (!isGM && held < 1) {
     console.warn(`Wheel of Loot | ${user.name} tried to spin with no credits`);
     await tell(caller, t("Notify.NoSpins"));
@@ -236,8 +238,9 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
   session.currentActorName = null;
   session.giftedTo = null;
 
-  if (totalCredits() > 0) await socket().executeForEveryone("rearmWheel", sessionId);
-  else {
+  if (totalCredits() > 0 || !autoClose()) {
+    await socket().executeForEveryone("rearmWheel", sessionId);
+  } else {
     sessions.delete(sessionId);
     await socket().executeForEveryone("closeWheel", sessionId);
   }
@@ -248,6 +251,8 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
 /* -------------------------------------------- */
 
 async function postResultCard(session, accepted, granted, coins) {
+  const mode = chatCardMode();
+  if (mode === "none") return;
   const esc = foundry.utils.escapeHTML;
   const entry = session.entry;
   const spinner = session.currentActorName;
@@ -288,7 +293,10 @@ async function postResultCard(session, accepted, granted, coins) {
         </div>
         ${verdict}
       </div>`,
-    speaker: {alias: t("Card.Speaker")},
+    speaker: {alias: wheelSpeaker()},
+    // A GM-only card keeps the record without spoiling what is still on the
+    // wheel for the players who have not spun yet.
+    whisper: mode === "gm" ? ChatMessage.getWhisperRecipients("GM").map(u => u.id) : undefined,
     flags: {[MODULE_ID]: {sessionId: session.sessionId, accepted}}
   });
 }

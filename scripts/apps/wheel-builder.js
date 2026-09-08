@@ -12,9 +12,14 @@
  * Nothing is written until Save, so experimenting is free.
  */
 
-import {buildCatalogue, cachedCatalogue, catalogueRow, cataloguePacks, catalogueTypes, invalidateCatalogue} from "../core/catalogue.js";
+import {
+  buildCatalogue, cachedCatalogue, catalogueRow, cataloguePacks, catalogueSources,
+  catalogueTypes, invalidateCatalogue
+} from "../core/catalogue.js";
 import {clampSlots, MAX_SLOTS, MIN_SLOTS, richText, SLOT_PRESETS, slotCount} from "../core/wheel-data.js";
-import {MODULE_ID, t} from "../core/constants.js";
+import {DEDUPE_MODES, foldDuplicates} from "../core/dedupe.js";
+import {coinDenomination, coinPresets, defaultSlots} from "../core/settings.js";
+import {t} from "../core/constants.js";
 import {planWheel} from "../core/wheel-plan.js";
 import {systemAdapter} from "../systems/adapter.js";
 
@@ -25,9 +30,6 @@ const USE_LABEL = {
   charges: {tag: "N×", key: "Use.Charges"},
   recharge: {tag: "↻", key: "Use.Recharge"}
 };
-
-/** Coin presets offered by the "add coin" control. */
-const COIN_PRESETS = [10, 25, 50, 100, 250, 500, 1000];
 
 /** Rows rendered before the list is cut short; the filters are the answer. */
 const CATALOGUE_CAP = 300;
@@ -53,6 +55,7 @@ export class WheelBuilder extends ApplicationV2 {
       clearFilters: WheelBuilder.#onClearFilters,
       refresh: WheelBuilder.#onRefresh,
       expand: WheelBuilder.#onExpand,
+      variants: WheelBuilder.#onVariants,
       rerollOne: WheelBuilder.#onRerollOne,
       rollWheel: WheelBuilder.#onRollWheel,
       fill: WheelBuilder.#onFill,
@@ -65,15 +68,20 @@ export class WheelBuilder extends ApplicationV2 {
     this.table = table;
     // A saved wheel already knows how big it is; only a brand new one needs a
     // default, and that is the GM's own preference rather than a constant.
-    this.target = clampSlots(slotCount(table) || game.settings.get(MODULE_ID, "defaultSlots"));
+    this.target = clampSlots(slotCount(table) || defaultSlots());
     this.entries = [];
     this.filters = {
       search: "",
       pack: "",
+      source: "",
       type: systemAdapter().id === "dnd5e" ? "consumable" : "",
       rarity: "",
       hideUsed: true,
-      singleUse: systemAdapter().tracksUses
+      singleUse: systemAdapter().tracksUses,
+      // A world with several imported books is the normal case, not the
+      // exceptional one, so the browser folds by default and lets the GM
+      // unfold rather than drowning them first and explaining later.
+      dupes: "name"
     };
     this.dirty = false;
   }
@@ -136,8 +144,8 @@ export class WheelBuilder extends ApplicationV2 {
     return this.entries.reduce((a, e) => a + e.weight, 0);
   }
 
-  /** Catalogue rows matching the current filters — the pool every roll draws from. */
-  get pool() {
+  /** Rows passing the filters, before duplicates are folded. */
+  get matched() {
     const adapter = systemAdapter();
     const used = new Set(this.entries.map(e => e.uuid).filter(Boolean));
     const q = this.filters.search.trim().toLowerCase();
@@ -147,9 +155,25 @@ export class WheelBuilder extends ApplicationV2 {
       if (this.filters.type && c.itemType !== this.filters.type) return false;
       if (this.filters.rarity && c.rarity !== this.filters.rarity) return false;
       if (this.filters.pack && c.packId !== this.filters.pack) return false;
+      if (this.filters.source && c.book !== this.filters.source) return false;
       if (q && !c.name.toLowerCase().includes(q)) return false;
       return true;
     });
+  }
+
+  /**
+   * What the browser shows, and what every roll draws from.
+   *
+   * Folding happens after filtering, not before, so narrowing to one compendium
+   * shows that compendium's copies rather than whichever variant happened to
+   * win the fold across the whole world.
+   *
+   * Rolling from the folded list matters as much as browsing it: a wheel rolled
+   * from an unfolded pool in a world with eleven Potions of Healing would be
+   * eleven Potions of Healing.
+   */
+  get pool() {
+    return foldDuplicates(this.matched, this.filters.dupes);
   }
 
   /* ---------------------------------------- */
@@ -162,6 +186,7 @@ export class WheelBuilder extends ApplicationV2 {
 
   async _renderHTML() {
     const adapter = systemAdapter();
+    const denom = coinDenomination();
     const root = document.createElement("div");
     root.className = "wol-builder-body";
     root.innerHTML = `
@@ -185,6 +210,11 @@ export class WheelBuilder extends ApplicationV2 {
             <select name="type"></select>
             ${adapter.rarities.length ? `<select name="rarity"></select>` : ""}
             <select name="pack"></select>
+            <select name="source"></select>
+            <select name="dupes" data-tooltip="${t("Builder.DupesHint")}">
+              ${DEDUPE_MODES.map(m => `<option value="${m}"${
+                m === this.filters.dupes ? " selected" : ""}>${t(`Builder.Dupes.${m}`)}</option>`).join("")}
+            </select>
             <label class="wol-b-check">
               <input type="checkbox" name="hideUsed" ${this.filters.hideUsed ? "checked" : ""}>
               ${t("Builder.HideUsed")}
@@ -219,7 +249,7 @@ export class WheelBuilder extends ApplicationV2 {
             <p class="wol-b-hint">${t("Builder.DropHint")}</p>
             <div class="wol-b-coin">
               <select name="coin">
-                ${COIN_PRESETS.map(v => `<option value="${v}">${v} gp</option>`).join("")}
+                ${coinPresets().map(v => `<option value="${v}">${v} ${denom}</option>`).join("")}
               </select>
               <button type="button" class="wol-b-ghost" data-action="addCoin">
                 <i class="fa-solid fa-coins"></i> ${t("Builder.AddCoin")}
@@ -275,8 +305,10 @@ export class WheelBuilder extends ApplicationV2 {
     fill("type", catalogueTypes().map(x => ({value: x, label: x})), this.filters.type, t("Builder.AnyType"));
     fill("rarity", adapter.rarities.map(r => ({value: r, label: adapter.rarityLabel(r)})),
       this.filters.rarity, t("Builder.AnyRarity"));
-    fill("pack", cataloguePacks().map(p => ({value: p.id, label: p.label})),
+    fill("pack", cataloguePacks().map(x => ({value: x.id, label: x.label})),
       this.filters.pack, t("Builder.AllPacks"));
+    fill("source", catalogueSources().map(x => ({value: x, label: x})),
+      this.filters.source, t("Builder.AnySource"));
 
     const onFilterChange = ev => {
       const el = ev.target;
@@ -442,9 +474,14 @@ export class WheelBuilder extends ApplicationV2 {
         <span class="nm">${foundry.utils.escapeHTML(c.name)}</span>
         <span class="src" data-tooltip="${foundry.utils.escapeHTML(c.packLabel)}">${
           foundry.utils.escapeHTML(c.source || "—")}</span>
-        ${c.variants > 1 ? `<span class="var${c.likelyDuplicate ? " dup" : ""}"
-          data-tooltip="${c.likelyDuplicate ? t("Builder.LikelyDuplicate") : t("Builder.Variants", {n: c.variants})}"
-          >${c.variants}&times;</span>` : `<span class="var"></span>`}
+        ${c.group?.length > 1
+          ? `<button type="button" class="var grouped" data-action="variants" data-uuid="${c.uuid}"
+              data-tooltip="${t("Builder.Variants", {n: c.group.length})}">${c.group.length}&times;</button>`
+          : (c.variants > 1
+            ? `<span class="var${c.redundant ? " dup" : ""}"
+                data-tooltip="${c.redundant ? t("Builder.LikelyDuplicate") : t("Builder.Variants", {n: c.variants})}"
+                >${c.variants}&times;</span>`
+            : `<span class="var"></span>`)}
         ${adapter.tracksUses ? `<span class="use u-${c.profile}" data-tooltip="${t(use.key)}">${use.tag}</span>` : ""}
         ${c.rarity ? `<span class="rar r-${c.rarity}">${adapter.rarityLabel(c.rarity)}</span>` : `<span class="rar"></span>`}
         <button type="button" data-action="expand" data-uuid="${c.uuid}" data-tooltip="${t("Builder.ShowDetail")}">
@@ -462,9 +499,18 @@ export class WheelBuilder extends ApplicationV2 {
       });
     });
 
-    content.querySelector("[data-role=catcount]").textContent = rows.length > CATALOGUE_CAP
+    // Say what folding removed, not just what survived: a GM with 2,000
+    // redundant rows wants to know that, and one with none wants to be sure the
+    // filter is not quietly hiding something they meant to see.
+    const matched = this.matched.length;
+    const hidden = matched - rows.length;
+    const count = content.querySelector("[data-role=catcount]");
+    const shownText = rows.length > CATALOGUE_CAP
       ? t("Builder.ShowingCapped", {cap: CATALOGUE_CAP, total: rows.length})
       : t("Builder.ShowingAll", {n: rows.length});
+    count.textContent = hidden > 0
+      ? `${shownText} — ${t("Builder.Folded", {n: hidden})}`
+      : shownText;
   }
 
   #renderEntries(content) {
@@ -561,7 +607,9 @@ export class WheelBuilder extends ApplicationV2 {
 
   static #onAddCoin(event, target) {
     const amount = Number(this.element.querySelector("[name=coin]").value);
-    const name = `${amount} gp`;
+    // The denomination has to be written into the name, not just displayed:
+    // the payout path reads it back out of the wedge name when the wheel lands.
+    const name = `${amount} ${coinDenomination()}`;
     if (this.entries.some(e => e.name === name)) {
       ui.notifications.info(t("Notify.CoinOnWheel", {name}));
       return;
@@ -844,8 +892,54 @@ export class WheelBuilder extends ApplicationV2 {
       </div>`;
   }
 
+  /**
+   * List the printings a folded row stands for.
+   *
+   * Never a silent choice: four "Dust of Dryness" entries really are four
+   * different items (one use versus ten), so the fold picks a representative
+   * for browsing and this is how the GM picks a different one.
+   */
+  static #onVariants(event, target) {
+    const adapter = systemAdapter();
+    const li = target.closest("li");
+    const list = li.parentElement;
+    const open = li.nextElementSibling?.classList.contains("wol-b-detail");
+
+    list.querySelectorAll(".wol-b-detail").forEach(n => n.remove());
+    if (open) return;
+
+    const row = this.pool.find(c => c.uuid === target.dataset.uuid);
+    if (!row?.group?.length) return;
+
+    const panel = document.createElement("li");
+    panel.className = "wol-b-detail";
+    panel.innerHTML = `
+      <div class="wol-b-variants">
+        <p class="muted">${t("Builder.VariantsHeading", {name: foundry.utils.escapeHTML(row.name)})}</p>
+        <ol>
+          ${row.group.map(g => `
+            <li class="wol-b-row">
+              <img src="${g.img || "icons/svg/item-bag.svg"}" alt="">
+              <span class="nm">${foundry.utils.escapeHTML(g.source || t("Builder.NoSource"))}</span>
+              <span class="src" data-tooltip="${foundry.utils.escapeHTML(g.packLabel)}">${
+                foundry.utils.escapeHTML(g.packLabel)}</span>
+              ${g.rarity ? `<span class="rar r-${g.rarity}">${adapter.rarityLabel(g.rarity)}</span>` : `<span class="rar"></span>`}
+              ${g.usesMax != null ? `<span class="use">${g.usesMax}&times;</span>` : `<span class="use"></span>`}
+              <button type="button" data-action="expand" data-uuid="${g.uuid}"
+                data-tooltip="${t("Builder.ShowDetail")}"><i class="fa-solid fa-chevron-down"></i></button>
+              <button type="button" data-action="add" data-uuid="${g.uuid}"
+                data-tooltip="${t("Builder.AddToWheel")}"><i class="fa-solid fa-plus"></i></button>
+            </li>`).join("")}
+        </ol>
+      </div>`;
+    li.after(panel);
+  }
+
   static #onClearFilters(event, target) {
-    this.filters = {search: "", pack: "", type: "", rarity: "", hideUsed: true, singleUse: false};
+    this.filters = {
+      search: "", pack: "", source: "", type: "", rarity: "",
+      hideUsed: true, singleUse: false, dupes: "name"
+    };
     this.render();
   }
 

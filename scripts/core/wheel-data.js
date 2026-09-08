@@ -150,8 +150,11 @@ export function labelBudget(total) {
 export function labelFontSize(total) {
   if (total <= 16) return 26;
   if (total <= 24) return 22;
-  if (total <= 40) return 19;
-  if (total <= 72) return 16;
+  if (total <= 40) return 18;
+  // 15px is the size the original 64-slot wheel was tuned at, and a 34-character
+  // label at that size was measured to just clear the hub. Anything larger here
+  // starts overflowing a wheel that used to fit.
+  if (total <= 72) return 15;
   return 13;
 }
 

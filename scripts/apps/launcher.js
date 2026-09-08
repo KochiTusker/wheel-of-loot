@@ -5,6 +5,9 @@
  * Allocation and presentation live in one dialog because they are one decision
  * in practice — "give the winner a spin on the loot wheel" — and splitting them
  * would mean two trips through the UI every time.
+ *
+ * Since the module has exactly one entry point in the sidebar, this is also the
+ * hub: everything else it can do is reachable from here.
  */
 
 import {slotCount, validateTable} from "../core/wheel-data.js";
@@ -76,8 +79,9 @@ export async function pickTable(title, label) {
  * @param {() => Record<string, number>} api.getCredits             Ledger reader.
  * @param {(allocations: object) => Promise<any>} api.grant         Ledger writer.
  * @param {() => Promise<RollTable|null>} api.createTable           New-wheel flow.
+ * @param {(table: RollTable) => Promise<any>} api.build            Builder opener.
  */
-export async function openLauncher({present, getCredits, grant, createTable}) {
+export async function openLauncher({present, getCredits, grant, createTable, build}) {
   if (!game.user.isGM) return;
 
   // With no tables at all, the only useful thing to offer is making one — so
@@ -114,7 +118,13 @@ export async function openLauncher({present, getCredits, grant, createTable}) {
     <div class="wol-form">
       <div class="form-group">
         <label for="wol-table">${t("Launcher.Table")}</label>
-        <select id="wol-table" name="table">${tableOptions()}</select>
+        <div class="wol-table-pick">
+          <select id="wol-table" name="table">${tableOptions()}</select>
+          <button type="button" class="wol-b-ghost" data-role="newwheel"
+            data-tooltip="${t("Launcher.NewHint")}">
+            <i class="fa-solid fa-circle-plus"></i> ${t("Launcher.New")}
+          </button>
+        </div>
       </div>
       <h4 class="wol-alloc-head">${t("Launcher.Spins")}</h4>
       <p class="hint">${t("Launcher.SpinsHint")}</p>
@@ -127,6 +137,15 @@ export async function openLauncher({present, getCredits, grant, createTable}) {
     classes: ["wol-dialog"],
     content,
     position: {width: 580},
+    // Creating a wheel is not one of the three things this dialog decides
+    // between, so it sits beside the picker it affects rather than in the
+    // footer competing with them.
+    render: (event, dialog) => {
+      dialog.element.querySelector("[data-role=newwheel]")?.addEventListener("click", async () => {
+        dialog.close();
+        await createTable();
+      });
+    },
     buttons: [
       {
         action: "present",
@@ -164,12 +183,9 @@ export async function openLauncher({present, getCredits, grant, createTable}) {
       ui.notifications.info(t("Notify.LedgerUpdated", {n: total}));
       break;
     }
-    case "build": {
-      const {WheelBuilder} = await import("./wheel-builder.js");
-      const table = await fromUuid(result.table);
-      if (table) await WheelBuilder.open(table);
+    case "build":
+      await build(result.table);
       break;
-    }
   }
 }
 

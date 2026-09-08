@@ -12,14 +12,23 @@
 
 // Installs the Foundry globals the pure modules touch. Imports hoist, so this
 // has to come first.
-import "./harness.mjs";
+import {installSettingsStub} from "./harness.mjs";
 
 import {
   clampSlots, disperseSlots, labelBudget, labelFontSize, MAX_SLOTS, MIN_SLOTS,
-  mulberry32, paletteCycle, sliceColours, slotCount, validateTable, WHEEL_PALETTE
+  mulberry32, paletteCycle, sliceColours, SLOT_PRESETS, slotCount, validateTable, WHEEL_PALETTE
 } from "../scripts/core/wheel-data.js";
 import {distributeSlots, drawDistinct, planWheel, rarityWeight} from "../scripts/core/wheel-plan.js";
 import {GENERIC_ADAPTER} from "../scripts/systems/adapter.js";
+import {
+  annotateDuplicates, completeness, duplicateStats, foldDuplicates,
+  normaliseName, printingSignature, redundancySignature
+} from "../scripts/core/dedupe.js";
+import {
+  PALETTES, allowGift, allowRefuse, autoClose, chatCardMode, coinDenomination, coinPresets,
+  confettiEnabled, defaultSlots, gmNeedsCredit, hubIcon, palette, parseNumberList, parsePalette,
+  registerSettings, spinDuration, spinTurns, tickVolume, ticksEnabled, winSound
+} from "../scripts/core/settings.js";
 
 let passed = 0;
 const failures = [];
@@ -336,6 +345,253 @@ check("generic adapter answers safely with no system knowledge", () => {
   eq(GENERIC_ADAPTER.descriptionOf({system: {description: {value: "<p>Hi</p>"}}}), "<p>Hi</p>");
   eq(GENERIC_ADAPTER.descriptionOf({system: {notes: "plain"}}), "plain");
   eq(GENERIC_ADAPTER.descriptionOf({system: {}}), "");
+});
+
+
+/* -------------------------------------------- */
+/*  Settings parsing                            */
+/* -------------------------------------------- */
+
+check("parsePalette accepts what a GM would plausibly type", () => {
+  eq(parsePalette("#C1272D, #F4EAD2, #1F3A93"), ["#C1272D", "#F4EAD2", "#1F3A93"]);
+  eq(parsePalette("C1272D F4EAD2"), ["#C1272D", "#F4EAD2"], "hashes are optional");
+  eq(parsePalette("#abc, #DEF"), ["#abc", "#DEF"], "three-digit hex is valid");
+  eq(parsePalette("#C1272D\n#F4EAD2"), ["#C1272D", "#F4EAD2"], "newlines separate too");
+  // One typo costs that colour, not the whole theme.
+  eq(parsePalette("#C1272D, nonsense, #1F3A93"), ["#C1272D", "#1F3A93"]);
+  eq(parsePalette(""), []);
+  eq(parsePalette(undefined), []);
+  eq(parsePalette("#12345"), [], "five digits is not a hex colour");
+});
+
+check("every built-in palette is usable", () => {
+  for (const [name, colours] of Object.entries(PALETTES)) {
+    assert(colours.length >= 2, name + " needs at least two colours");
+    eq(parsePalette(colours.join(",")), colours, name + " round-trips through the parser");
+  }
+});
+
+check("parseNumberList tolerates real input", () => {
+  eq(parseNumberList("10, 25, 50"), [10, 25, 50]);
+  eq(parseNumberList("50 10 25"), [10, 25, 50], "sorted ascending");
+  eq(parseNumberList("10, 10, 25"), [10, 25], "deduplicated");
+  eq(parseNumberList("10, -5, 0, abc, 25"), [10, 25], "junk and non-positives dropped");
+  eq(parseNumberList(""), []);
+  eq(parseNumberList("1 2 3 4 5 6 7 8 9 10 11 12 13 14").length, 12, "capped");
+});
+
+/* -------------------------------------------- */
+/*  Duplicate handling                          */
+/* -------------------------------------------- */
+
+check("normaliseName folds the differences that do not mean anything", () => {
+  eq(normaliseName("Potion of Healing"), normaliseName("  potion  of   healing "));
+  eq(normaliseName("Mariner's Armor"), normaliseName("Mariner’s Armor"), "curly apostrophes");
+  eq(normaliseName("Half-Plate"), normaliseName("Half‐Plate"), "different dashes");
+  // But genuinely different names must stay different.
+  assert(normaliseName("Potion of Healing") !== normaliseName("Potion of Greater Healing"));
+  eq(normaliseName(undefined), "");
+});
+
+/** A world shaped like one with several imported books. */
+function duplicateWorld() {
+  return [
+    // Four printings of one item, all genuinely different.
+    {uuid: "a1", name: "Dust of Dryness", source: "DMG 2014", rarity: "uncommon", price: 200, itemType: "consumable", usesMax: 1,  img: "art.webp", packId: "ddb"},
+    {uuid: "a2", name: "Dust of Dryness", source: "DMG 2024", rarity: "uncommon", price: 250, itemType: "consumable", usesMax: 1,  img: "art.webp", packId: "ddb"},
+    {uuid: "a3", name: "Dust of Dryness", source: "SRD 5.1",  rarity: "uncommon", price: 200, itemType: "consumable", usesMax: 10, img: "art.webp", packId: "srd"},
+    {uuid: "a4", name: "dust of dryness", source: "SRD 5.2",  rarity: "uncommon", price: 200, itemType: "consumable", usesMax: 10, img: "art.webp", packId: "srd2"},
+    // A true redundant pair: same printing, same pack, listed twice.
+    {uuid: "b1", name: "Potion of Healing", source: "SRD 5.1", rarity: "common", price: 50, itemType: "consumable", usesMax: 1, img: "art.webp", packId: "srd"},
+    {uuid: "b2", name: "Potion of Healing", source: "SRD 5.1", rarity: "common", price: 50, itemType: "consumable", usesMax: 1, img: "art.webp", packId: "srd"},
+    // A lone item with nothing to confuse it with.
+    {uuid: "c1", name: "Boots of Speed", source: "DMG 2014", rarity: "rare", price: 4000, itemType: "equipment", usesMax: null, img: "art.webp", packId: "ddb"}
+  ];
+}
+
+check("redundancy is the same printing in the same pack, nothing wider", () => {
+  const rows = annotateDuplicates(duplicateWorld());
+  const by = id => rows.find(r => r.uuid === id);
+  // The two SRD Potions of Healing are the only true redundancy here.
+  assert(by("b1").redundant && by("b2").redundant, "the identical pair is redundant");
+  // Reprints across books are NOT duplicates, even inside one compendium.
+  assert(!by("a1").redundant && !by("a2").redundant, "different books are not redundant");
+  assert(!by("a3").redundant && !by("a4").redundant, "different packs are not redundant");
+  assert(!by("c1").redundant, "a lone item is never redundant");
+});
+
+check("case and whitespace differences still group as one item", () => {
+  const rows = annotateDuplicates(duplicateWorld());
+  eq(rows.find(r => r.uuid === "a4").variants, 4, "lowercase copy joins its group");
+  eq(rows.find(r => r.uuid === "a1").variants, 4);
+});
+
+check("hiding exact duplicates removes one row and only one", () => {
+  const rows = annotateDuplicates(duplicateWorld());
+  const folded = foldDuplicates(rows, "redundant");
+  eq(folded.length, rows.length - 1, "exactly the redundant copy goes");
+  const kept = folded.map(r => r.uuid);
+  for (const id of ["a1", "a2", "a3", "a4"]) {
+    assert(kept.includes(id), "printing " + id + " must survive");
+  }
+  eq(folded.filter(r => normaliseName(r.name) === "potion of healing").length, 1);
+});
+
+check("one row per item collapses variants without losing them", () => {
+  const rows = annotateDuplicates(duplicateWorld());
+  const folded = foldDuplicates(rows, "name");
+  eq(folded.length, 3, "three distinct items");
+  const dust = folded.find(r => normaliseName(r.name) === "dust of dryness");
+  eq(dust.group.length, 4, "all four printings are still reachable");
+  // The representative is the most complete record, not an arbitrary one.
+  eq(dust.group[0].score, Math.max(...dust.group.map(g => g.score)));
+  eq(folded.find(r => normaliseName(r.name) === "potion of healing").group.length, 2);
+});
+
+check("showing every copy changes nothing", () => {
+  const rows = annotateDuplicates(duplicateWorld());
+  eq(foldDuplicates(rows, "all").length, rows.length);
+  eq(foldDuplicates(rows, "all").map(r => r.uuid), rows.map(r => r.uuid), "order preserved");
+});
+
+check("folding works with no source or rarity data at all", () => {
+  // A system with no rarities and no source books still has to group sensibly.
+  const bare = annotateDuplicates([
+    {uuid: "x1", name: "Rope", source: "", rarity: null, price: null, itemType: "gear", img: "", packId: "p"},
+    {uuid: "x2", name: "Rope", source: "", rarity: null, price: null, itemType: "gear", img: "", packId: "p"},
+    {uuid: "x3", name: "Torch", source: "", rarity: null, price: null, itemType: "gear", img: "", packId: "p"}
+  ]);
+  eq(foldDuplicates(bare, "redundant").length, 2, "the identical Rope pair collapses");
+  eq(foldDuplicates(bare, "name").length, 2, "two distinct names");
+});
+
+check("completeness prefers the richer record", () => {
+  const rich = {rarity: "rare", price: 100, source: "DMG", img: "art.webp", usesMax: 1};
+  const stub = {rarity: null, price: null, source: "", img: "icons/svg/item-bag.svg", usesMax: null};
+  assert(completeness(rich) > completeness(stub));
+  eq(completeness(stub), 0);
+});
+
+check("printing and redundancy signatures differ only by pack", () => {
+  const a = {name: "X", source: "B", rarity: "rare", price: 1, itemType: "t", packId: "p1"};
+  const b = {...a, packId: "p2"};
+  eq(printingSignature(a), printingSignature(b), "same printing, different shelf");
+  assert(redundancySignature(a) !== redundancySignature(b), "but not redundant copies");
+});
+
+check("duplicateStats describes the world honestly", () => {
+  const stats = duplicateStats(annotateDuplicates(duplicateWorld()));
+  eq(stats.total, 7);
+  eq(stats.distinct, 3, "three distinct items");
+  eq(stats.multiSource, 2, "Dust and Potion both appear more than once");
+  eq(stats.redundant, 1, "one row could be hidden with nothing lost");
+});
+
+
+/* -------------------------------------------- */
+/*  Regression guard: v1 behaviour               */
+/* -------------------------------------------- */
+
+/**
+ * Every setting added in 2.0 has a default that reproduces exactly what the
+ * module did before it had any settings at all.
+ *
+ * This is the promise that upgrading changes nothing until you choose to change
+ * something, so it is pinned here rather than left to inspection. A default
+ * drifting is a silent behaviour change in somebody's live game.
+ */
+check("every 2.0 default reproduces v1 behaviour", () => {
+  const registered = new Map();
+  const menus = [];
+  installSettingsStub(registered, menus);
+
+  registerSettings(function FakeMenu() {}, SLOT_PRESETS);
+
+  // The wheel looked and behaved like this before any of it was configurable.
+  eq(palette(), ["#C1272D", "#F4EAD2", "#1F3A93", "#E8B31F"], "v1 fairground palette");
+  eq(hubIcon(), "icons/svg/chest.svg", "v1 hub art");
+  eq(confettiEnabled(), true, "v1 always fired confetti");
+  eq(spinDuration(), 6000, "v1 spun for 6 seconds");
+  eq(spinTurns(), 6, "v1 TURNS constant");
+  eq(ticksEnabled(), true, "v1 always ticked");
+  // v1 set the oscillator gain to a fixed 0.035, and the wheel multiplies by 0.1.
+  // Compared with a tolerance because 0.35 * 0.1 is not exactly 0.035 in binary
+  // floating point - the difference is far below anything audible.
+  assert(Math.abs((tickVolume() * 0.1) - 0.035) < 1e-9, "v1 tick loudness");
+  eq(winSound(), "", "v1 played no landing sound");
+  eq(allowGift(), true, "v1 always offered Gift");
+  eq(allowRefuse(), true, "v1 always offered Refuse");
+  eq(gmNeedsCredit(), false, "v1 let the GM spin freely");
+  eq(autoClose(), true, "v1 closed the wheel once spins ran out");
+  eq(chatCardMode(), "public", "v1 posted the card to everyone");
+  eq(defaultSlots(), 64, "v1 was a 64-slot wheel");
+  eq(coinPresets(), [10, 25, 50, 100, 250, 500, 1000], "v1 coin presets");
+  eq(coinDenomination(), "gp", "v1 wrote coin wedges in gp");
+
+  // The menu must be GM-only; these are world settings.
+  eq(menus.length, 1, "one settings menu");
+  eq(menus[0].restricted, true, "restricted to GMs");
+});
+
+check("a 64-slot wheel still draws exactly as it did in v1", () => {
+  // v1 hard-coded a 4-colour cycle and a 15px label, and truncated at 34 chars.
+  eq(labelFontSize(64), 15, "v1 wedge type size");
+  eq(labelBudget(64), 34, "v1 truncation point");
+  eq(paletteCycle(64), 4, "v1 four-colour alternation");
+  const colours = sliceColours(64, ["#C1272D", "#F4EAD2", "#1F3A93", "#E8B31F"]);
+  // v1 was literally WHEEL_PALETTE[slice % 4]; the new code must agree at 64.
+  const v1 = Array.from({length: 64}, (_, i) => ["#C1272D", "#F4EAD2", "#1F3A93", "#E8B31F"][i % 4]);
+  eq(colours, v1, "identical slice colours at 64");
+});
+
+check("a custom palette that cannot work falls back rather than breaking", () => {
+  const registered = new Map();
+  installSettingsStub(registered, []);
+  registerSettings(function FakeMenu() {}, SLOT_PRESETS);
+
+  registered.set("palette", "custom");
+  registered.set("paletteCustom", "");
+  eq(palette(), PALETTES.fairground, "empty custom falls back");
+
+  registered.set("paletteCustom", "#ff0000");
+  eq(palette(), PALETTES.fairground, "one colour cannot alternate");
+
+  registered.set("paletteCustom", "not, a, colour");
+  eq(palette(), PALETTES.fairground, "junk falls back");
+
+  registered.set("paletteCustom", "#ff0000, #00ff00");
+  eq(palette(), ["#ff0000", "#00ff00"], "two valid colours are honoured");
+
+  registered.set("palette", "nonexistent-theme");
+  eq(palette(), PALETTES.fairground, "an unknown named palette falls back");
+});
+
+check("coin and slot settings refuse to produce nonsense", () => {
+  const registered = new Map();
+  installSettingsStub(registered, []);
+  registerSettings(function FakeMenu() {}, SLOT_PRESETS);
+
+  registered.set("coinPresets", "");
+  eq(coinPresets(), [10, 25, 50, 100, 250, 500, 1000], "empty list falls back to the default");
+
+  registered.set("coinPresets", "junk, -4, 0");
+  eq(coinPresets(), [10, 25, 50, 100, 250, 500, 1000], "all-invalid falls back too");
+
+  registered.set("coinPresets", "5, 10");
+  eq(coinPresets(), [5, 10], "a valid list is honoured");
+
+  registered.set("coinDenomination", "  SP  ");
+  eq(coinDenomination(), "sp", "trimmed and lowercased");
+
+  registered.set("coinDenomination", "");
+  eq(coinDenomination(), "gp", "blank falls back to gp");
+
+  registered.set("tickVolume", 99);
+  eq(tickVolume(), 1, "volume is clamped");
+  registered.set("tickVolume", -5);
+  eq(tickVolume(), 0, "volume is clamped");
+  registered.set("tickVolume", "loud");
+  eq(tickVolume(), 0.35, "unparseable volume falls back");
 });
 
 /* -------------------------------------------- */

@@ -9,7 +9,8 @@
  */
 
 import {MODULE_ID, t} from "./core/constants.js";
-import {SETTING_CREDITS, SETTING_SPIN_SECONDS, SETTING_TICKS, getCredits, setSpins} from "./core/ledger.js";
+import {getCredits, setSpins} from "./core/ledger.js";
+import {S, registerSettings} from "./core/settings.js";
 import {auditTable, buildEntries, describeFault, disperseSlots, SLOT_PRESETS, validateTable} from "./core/wheel-data.js";
 import {callOwner, registerSocket, socketReady} from "./core/socket.js";
 import {cancelWheel, registerSession, requestSpin, resolveWheel, sessions, startSession} from "./core/session.js";
@@ -17,6 +18,7 @@ import {LootWheel} from "./apps/wheel-app.js";
 import {WheelBuilder} from "./apps/wheel-builder.js";
 import {openLauncher, pickTable} from "./apps/launcher.js";
 import {registerDnd5e} from "./systems/dnd5e.js";
+import {WheelSettings} from "./apps/settings-menu.js";
 import {runMigration} from "./core/migrate.js";
 
 /* -------------------------------------------- */
@@ -123,54 +125,7 @@ const api = {present, build, createTable, grant, getCredits};
 
 Hooks.once("init", () => {
   registerDnd5e();
-
-  game.settings.register(MODULE_ID, SETTING_SPIN_SECONDS, {
-    name: "WHEELOFLOOT.Setting.SpinSeconds",
-    hint: "WHEELOFLOOT.Setting.SpinSecondsHint",
-    scope: "world",
-    config: true,
-    type: Number,
-    range: {min: 2, max: 20, step: 0.5},
-    default: 6
-  });
-
-  game.settings.register(MODULE_ID, "defaultSlots", {
-    name: "WHEELOFLOOT.Setting.DefaultSlots",
-    hint: "WHEELOFLOOT.Setting.DefaultSlotsHint",
-    scope: "world",
-    config: true,
-    type: Number,
-    choices: Object.fromEntries(SLOT_PRESETS.map(n => [n, `${n}`])),
-    default: 64
-  });
-
-  // Client scope: whether you want the fairground ticks is a matter of taste,
-  // and one player muting them should not mute the table.
-  game.settings.register(MODULE_ID, SETTING_TICKS, {
-    name: "WHEELOFLOOT.Setting.TickSound",
-    hint: "WHEELOFLOOT.Setting.TickSoundHint",
-    scope: "client",
-    config: true,
-    type: Boolean,
-    default: true
-  });
-
-  // The ledger. World scope means only a GM can write it, and every client is
-  // updated automatically when it changes.
-  game.settings.register(MODULE_ID, SETTING_CREDITS, {
-    scope: "world",
-    config: false,
-    type: Object,
-    default: {}
-  });
-
-  // Set once the rename migration has run, so it never runs twice.
-  game.settings.register(MODULE_ID, "migratedFrom", {
-    scope: "world",
-    config: false,
-    type: String,
-    default: ""
-  });
+  registerSettings(WheelSettings, SLOT_PRESETS);
 });
 
 Hooks.once("socketlib.ready", () => {
@@ -192,52 +147,42 @@ Hooks.once("ready", async () => {
   game.modules.get(MODULE_ID).api = api;
   globalThis.wheelOfLoot = api;
 
+  // Back-compat for macros written against the module's previous name. Cheap
+  // insurance: a GM's hotbar is not something this module gets to invalidate.
+  globalThis.sbtsLootWheel = {...api, edit: build};
+
   if (game.user.isGM) await runMigration();
 });
 
 // The ledger lives in a world setting, so every client learns about a grant
 // through the Setting update rather than a bespoke broadcast.
 Hooks.on("updateSetting", setting => {
-  if (setting.key !== `${MODULE_ID}.${SETTING_CREDITS}`) return;
+  if (setting.key !== `${MODULE_ID}.${S.CREDITS}`) return;
   LootWheel.current?.refreshCredits();
 });
 
-Hooks.on("getSceneControlButtons", controls => {
+/**
+ * One button, in the sidebar where wheels actually live.
+ *
+ * An earlier version put three tools in the token scene controls, which is both
+ * clutter and the wrong place: a wheel *is* a RollTable, so the RollTables tab
+ * is where a GM already goes looking for one. Everything the module does is
+ * reachable from the launcher this opens.
+ */
+Hooks.on("renderRollTableDirectory", (app, element) => {
   if (!game.user.isGM) return;
-  const tokens = controls.tokens;
-  if (!tokens?.tools) return;
+  // v13+ hands over an HTMLElement; older cores hand over a jQuery object.
+  const root = element instanceof HTMLElement ? element : element?.[0];
+  const actions = root?.querySelector(".header-actions");
+  // Re-renders are frequent and would otherwise stack up copies of the button.
+  if (!actions || actions.querySelector(".wol-open")) return;
 
-  const order = Object.keys(tokens.tools).length;
-
-  tokens.tools[`${MODULE_ID}-present`] = {
-    name: `${MODULE_ID}-present`,
-    title: "WHEELOFLOOT.Control.Present",
-    icon: "fa-solid fa-arrows-spin",
-    button: true,
-    visible: true,
-    order,
-    onChange: () => openLauncher({present, getCredits, grant, createTable})
-  };
-
-  tokens.tools[`${MODULE_ID}-build`] = {
-    name: `${MODULE_ID}-build`,
-    title: "WHEELOFLOOT.Control.Build",
-    icon: "fa-solid fa-sliders",
-    button: true,
-    visible: true,
-    order: order + 1,
-    onChange: () => build()
-  };
-
-  tokens.tools[`${MODULE_ID}-new`] = {
-    name: `${MODULE_ID}-new`,
-    title: "WHEELOFLOOT.Control.New",
-    icon: "fa-solid fa-circle-plus",
-    button: true,
-    visible: true,
-    order: order + 2,
-    onChange: () => createTable()
-  };
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "wol-open";
+  button.innerHTML = `<i class="fa-solid fa-arrows-spin" inert></i><span>${t("Control.Open")}</span>`;
+  button.addEventListener("click", () => openLauncher({present, getCredits, grant, createTable, build}));
+  actions.append(button);
 });
 
 /**

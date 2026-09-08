@@ -30,11 +30,31 @@ const REGISTRY = new Map();
  * @property {(actor: Actor, payout: object) => Promise<boolean>} grantCurrency
  * @property {(actor: Actor) => boolean} isRewardable  May this actor receive a prize?
  * @property {(source: object) => string} descriptionOf  Raw description HTML.
+ * @property {(source: object) => string} sourceOf   Book or publication an entry came from.
  */
 
 /* -------------------------------------------- */
 /*  Generic fallback                            */
 /* -------------------------------------------- */
+
+/**
+ * Where a system records which book an entry came from.
+ *
+ * This is the field that tells a reprint from a duplicate, so getting it right
+ * in an unknown system materially improves duplicate detection. Different
+ * systems disagree entirely — dnd5e uses `system.source.book`, pf2e uses
+ * `system.publication.title`, older content uses a bare string — so the generic
+ * adapter tries the shapes that actually occur rather than guessing one.
+ */
+const SOURCE_PATHS = [
+  "system.source.book",
+  "system.source.custom",
+  "system.source.title",
+  "system.publication.title",
+  "system.details.source.book",
+  "system.details.source",
+  "system.source"
+];
 
 /** Description lives in a different place in almost every system. Try the common ones. */
 const DESCRIPTION_PATHS = [
@@ -117,6 +137,18 @@ export const GENERIC_ADAPTER = {
   isRewardable(actor) {
     if (!actor) return false;
     return game.users.some(u => u.character?.id === actor.id);
+  },
+
+  /**
+   * Best-effort book name. Returns "" rather than null so callers can join it
+   * into a signature without special-casing.
+   */
+  sourceOf(entry) {
+    for (const path of SOURCE_PATHS) {
+      const value = foundry.utils.getProperty(entry, path);
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return "";
   },
 
   descriptionOf(source) {

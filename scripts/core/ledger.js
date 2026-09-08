@@ -9,19 +9,19 @@
  * GM can write it, so a modified client cannot mint itself spins; and every
  * client is told about a change through the Setting document, so no bespoke
  * broadcast is needed to keep the UI honest.
+ *
+ * This file holds only the ledger. Everything else configurable lives in
+ * `settings.js`.
  */
 
 import {MODULE_ID} from "./constants.js";
-
-export const SETTING_CREDITS = "spinCredits";
-export const SETTING_SPIN_SECONDS = "spinSeconds";
-export const SETTING_TICKS = "tickSound";
+import {S} from "./settings.js";
 
 /**
  * @returns {Record<string, number>} userId -> spins remaining.
  */
 export function getCredits() {
-  return foundry.utils.deepClone(game.settings.get(MODULE_ID, SETTING_CREDITS) ?? {});
+  return foundry.utils.deepClone(game.settings.get(MODULE_ID, S.CREDITS) ?? {});
 }
 
 /** @returns {number} Spins held by one user. */
@@ -46,7 +46,7 @@ export async function writeCredits(map) {
     const value = Math.max(0, Math.floor(Number(n) || 0));
     if (value > 0) clean[id] = value;
   }
-  return game.settings.set(MODULE_ID, SETTING_CREDITS, clean);
+  return game.settings.set(MODULE_ID, S.CREDITS, clean);
 }
 
 /**
@@ -67,20 +67,9 @@ export async function setSpins(allocations) {
   return getCredits();
 }
 
-/** Spend one credit from a user. Assumes the caller already checked they hold one. */
+/** Spend one credit. Assumes the caller already checked they hold one. */
 export async function debit(userId) {
   const map = getCredits();
   map[userId] = Math.max(0, (Number(map[userId]) || 0) - 1);
   return writeCredits(map);
-}
-
-/** How long the wheel takes to settle, in milliseconds. */
-export function spinDuration() {
-  const seconds = game.settings.get(MODULE_ID, SETTING_SPIN_SECONDS) ?? 6;
-  return Math.round(seconds * 1000);
-}
-
-/** Whether this client wants the fairground tick track. Client-scope. */
-export function ticksEnabled() {
-  return game.settings.get(MODULE_ID, SETTING_TICKS) !== false;
 }

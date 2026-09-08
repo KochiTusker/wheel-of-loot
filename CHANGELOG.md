@@ -15,12 +15,33 @@ given a proper wheel builder.
   items previously won from a wheel. The migration is additive — nothing is
   deleted, renamed or overwritten — and declining defers it to the next session.
 - `globalThis.sbtsLootWheel` is now `globalThis.wheelOfLoot`. The module API
-  moved with it: `game.modules.get("wheel-of-loot").api`.
-- `api.edit()` is now `api.build()`.
+  moved with it: `game.modules.get("wheel-of-loot").api`. The old global is kept
+  as an alias, with `edit()` still mapped to `build()`, so existing macros
+  continue to work.
+- The two token scene-control tools are gone, replaced by one button in the
+  RollTables sidebar. Nothing is registered in the scene controls any more.
 - CSS classes are prefixed `wol-` rather than `sbts-lw-`.
 
 ### Added
 
+- **One entry point.** A single **Wheel of Loot** button in the RollTables
+  sidebar replaces the three tools the module used to add to the token scene
+  controls. Creating a wheel now sits beside the table picker in the launcher.
+- **A settings menu**, grouped into Appearance, Spin, Rules and Builder:
+  six slice palettes plus custom hex with a live preview, hub image, chat-card
+  speaker, confetti, spin duration and rotations, per-client tick volume, an
+  optional win sound, and switches for gifting, refusing, whether the GM needs a
+  spin, whether the wheel auto-closes, and where the result card goes.
+  Coin amounts and denomination are configurable, so a silver-standard campaign
+  can write `sp` wedges.
+  **Every default reproduces 1.0 behaviour exactly, and a test pins that.**
+- **Duplicate handling in the builder.** A world with several imported books has
+  the same item many times over. Three modes: show every copy, hide only exact
+  duplicates (same printing, same compendium), or one row per item with the
+  printings one click away. Variants are never silently discarded — four Dust of
+  Dryness entries really are four different items.
+- **Source book filter**, and duplicate detection driven through the system
+  adapter, so it works outside dnd5e.
 - **Choose the wheel's size.** Presets from 12 to 96 slices, or any number from
   2 to 120. Slice colouring, label length and type size all scale with it, and
   no two adjacent slices ever share a colour at any size — including the wrap.
