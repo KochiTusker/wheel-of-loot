@@ -15,6 +15,8 @@
  */
 
 import {systemAdapter} from "../systems/adapter.js";
+import {DEFAULT_ODDS, clampOdds} from "./odds.js";
+import {MODULE_ID} from "./constants.js";
 
 /** Wheel sizes offered in the builder. Any number in range is allowed. */
 export const SLOT_PRESETS = [12, 16, 20, 24, 32, 48, 64, 96];
@@ -223,6 +225,8 @@ export async function buildEntries(table) {
       rarity,
       isCoin: !!coin,
       count,
+      // How likely this wedge really is, independent of how wide it looks.
+      odds: clampOdds(result.getFlag?.(MODULE_ID, "odds") ?? DEFAULT_ODDS),
       ink: coin ? COIN_COLOUR : (rarity ? adapter.rarityColour(rarity) : NEUTRAL_COLOUR)
     });
   }

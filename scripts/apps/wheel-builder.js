@@ -18,8 +18,9 @@ import {
 } from "../core/catalogue.js";
 import {clampSlots, MAX_SLOTS, MIN_SLOTS, richText, SLOT_PRESETS, slotCount} from "../core/wheel-data.js";
 import {DEDUPE_MODES, foldDuplicates} from "../core/dedupe.js";
+import {DEFAULT_ODDS, MAX_ODDS, MIN_ODDS, clampOdds, isUnweighted, trueChances} from "../core/odds.js";
 import {coinDenomination, coinPresets, defaultSlots} from "../core/settings.js";
-import {t} from "../core/constants.js";
+import {MODULE_ID, t} from "../core/constants.js";
 import {planWheel} from "../core/wheel-plan.js";
 import {systemAdapter} from "../systems/adapter.js";
 
@@ -128,6 +129,7 @@ export class WheelBuilder extends ApplicationV2 {
         name: result.name,
         img: result.img,
         weight,
+        odds: clampOdds(result.getFlag?.(MODULE_ID, "odds") ?? DEFAULT_ODDS),
         rarity,
         missing,
         source,
@@ -324,12 +326,26 @@ export class WheelBuilder extends ApplicationV2 {
     // Weight edits are live-bound rather than action-driven so typing a number
     // updates the tally immediately.
     content.querySelector("[data-role=entries]").addEventListener("input", ev => {
-      const input = ev.target.closest("input[data-weight]");
-      if (!input) return;
-      const index = Number(input.closest("li").dataset.index);
-      this.entries[index].weight = Math.max(1, Math.round(Number(input.value) || 1));
+      const li = ev.target.closest("li[data-index]");
+      if (!li) return;
+      const index = Number(li.dataset.index);
+
+      const weightInput = ev.target.closest("input[data-weight]");
+      if (weightInput) {
+        this.entries[index].weight = Math.max(1, Math.round(Number(weightInput.value) || 1));
+      }
+
+      const oddsInput = ev.target.closest("input[data-odds]");
+      if (oddsInput) {
+        this.entries[index].odds = clampOdds(oddsInput.value);
+        // Colour the control the moment it stops meaning "as likely as it looks".
+        oddsInput.closest(".odds")?.classList.toggle("bent", this.entries[index].odds !== DEFAULT_ODDS);
+      }
+
+      if (!weightInput && !oddsInput) return;
       this.#markDirty(content);
       this.#renderTally(content);
+      this.#renderChances(content);
     });
 
     this.#wireDropZone(content);
@@ -448,6 +464,7 @@ export class WheelBuilder extends ApplicationV2 {
       name: row.name,
       img: row.img,
       weight,
+      odds: DEFAULT_ODDS,
       rarity: row.rarity ?? null,
       source: row.source ?? "",
       profile: row.profile ?? "single",
@@ -548,6 +565,13 @@ export class WheelBuilder extends ApplicationV2 {
           <input type="number" min="1" step="1" value="${e.weight}" data-weight aria-label="${t("Builder.Slots")}">
           <button type="button" data-action="bump" data-index="${i}" data-delta="1"><i class="fa-solid fa-plus"></i></button>
         </span>
+        <span class="odds${(e.odds ?? DEFAULT_ODDS) === DEFAULT_ODDS ? "" : " bent"}"
+          data-tooltip="${t("Builder.OddsHint")}">
+          <input type="number" min="${MIN_ODDS}" max="${MAX_ODDS}" step="5"
+            value="${e.odds ?? DEFAULT_ODDS}" data-odds aria-label="${t("Builder.Odds")}">
+          <span class="pct">%</span>
+        </span>
+        <span class="chance" data-role="chance-${i}"></span>
         <button type="button" class="rr" data-action="rerollOne" data-index="${i}"
           data-tooltip="${t("Builder.RerollHint")}"${e.isCoin ? " disabled" : ""}>
           <i class="fa-solid fa-dice-d20"></i>
@@ -558,6 +582,32 @@ export class WheelBuilder extends ApplicationV2 {
       </li>`;
     }).join("");
     this.#renderTally(content);
+    this.#renderChances(content);
+  }
+
+  /**
+   * Put the real probability beside every wedge.
+   *
+   * The whole point of weighting is that the wheel no longer says what it
+   * means, so the GM setting it has to be able to see the truth. Rendered
+   * separately from the rows because it changes on every slot and odds edit.
+   */
+  #renderChances(content) {
+    const chances = trueChances(this.entries.map(e => ({count: e.weight, odds: e.odds})));
+    this.entries.forEach((entry, i) => {
+      const cell = content.querySelector(`[data-role="chance-${i}"]`);
+      if (!cell) return;
+      const pct = chances[i] * 100;
+      cell.textContent = pct >= 10 ? `${pct.toFixed(0)}%`
+        : (pct >= 1 ? `${pct.toFixed(1)}%` : `${pct.toFixed(2)}%`);
+      // Flag the gap between what the wedge looks like and what it is.
+      const naive = this.slotTotal ? (entry.weight / this.slotTotal) * 100 : 0;
+      const bent = Math.abs(pct - naive) > 0.05;
+      cell.classList.toggle("bent", bent);
+      cell.dataset.tooltip = bent
+        ? t("Builder.ChanceBent", {shown: naive.toFixed(1), real: pct.toFixed(2)})
+        : t("Builder.ChancePlain");
+    });
   }
 
   #renderTally(content) {
@@ -571,6 +621,12 @@ export class WheelBuilder extends ApplicationV2 {
     el.className = `wol-b-tally ${state}`;
     el.innerHTML = `<strong>${total}</strong> / ${this.target} ${t("Builder.SlotsWord")} — ${note}
       &nbsp;·&nbsp; ${t("Builder.NWedges", {n: this.entries.length})}`;
+
+    // A weighted wheel no longer reads its odds off the picture, so say so
+    // rather than letting the slot tally imply something untrue.
+    if (!isUnweighted(this.entries.map(e => ({odds: e.odds})))) {
+      el.innerHTML += ` &nbsp;·&nbsp; <span class="weighted">${t("Builder.Weighted")}</span>`;
+    }
 
     const pad = content.querySelector("[data-role=padlabel]");
     if (pad) pad.textContent = t("Builder.PadTo", {n: this.target});
@@ -619,6 +675,7 @@ export class WheelBuilder extends ApplicationV2 {
       name,
       img: "icons/commodities/currency/coin-engraved-jolly-roger-gold.webp",
       weight: 1,
+      odds: DEFAULT_ODDS,
       rarity: null,
       source: "",
       profile: "single",
@@ -999,7 +1056,10 @@ export class WheelBuilder extends ApplicationV2 {
     const results = this.entries.map(e => {
       const range = [cursor, cursor + e.weight - 1];
       cursor += e.weight;
-      const base = {name: e.name, img: e.img, weight: e.weight, range};
+      const base = {
+        name: e.name, img: e.img, weight: e.weight, range,
+        flags: {[MODULE_ID]: {odds: clampOdds(e.odds ?? DEFAULT_ODDS)}}
+      };
       return e.uuid
         ? {...base, type: CONST.TABLE_RESULT_TYPES.DOCUMENT, documentUuid: e.uuid}
         : {...base, type: CONST.TABLE_RESULT_TYPES.TEXT, description: e.name};

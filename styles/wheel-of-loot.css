@@ -998,3 +998,49 @@
 }
 
 .wol-set-foot button { width: auto; padding: 0.35rem 0.9rem; }
+
+/* ---- Builder: odds and true chance ---- */
+
+.wol-b-row .odds {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.wol-b-row .odds input {
+  width: 3.4rem;
+  height: 22px;
+  text-align: right;
+  font-size: 0.78rem;
+}
+
+.wol-b-row .odds .pct { font-size: 0.7rem; opacity: 0.55; }
+
+/* A wedge whose odds no longer match its size is the interesting case, so it
+   is the one that gets colour. */
+.wol-b-row .odds.bent input {
+  color: #c48b1f;
+  border-color: rgba(196, 139, 31, 0.65);
+  font-weight: 700;
+}
+
+.wol-b-row .chance {
+  flex: 0 0 auto;
+  min-width: 3.4rem;
+  text-align: right;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.wol-b-row .chance.bent {
+  color: #c48b1f;
+  opacity: 1;
+  font-weight: 700;
+}
+
+.wol-b-tally .weighted {
+  color: #c48b1f;
+  font-size: 0.82rem;
+}

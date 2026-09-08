@@ -25,6 +25,10 @@ import {
   normaliseName, printingSignature, redundancySignature
 } from "../scripts/core/dedupe.js";
 import {
+  DEFAULT_ODDS, MAX_ODDS, MIN_ODDS, clampOdds, effectiveWeights, isUnweighted,
+  pickEntry, slicesOf, totalWeight, trueChances
+} from "../scripts/core/odds.js";
+import {
   PALETTES, allowGift, allowRefuse, autoClose, chatCardMode, coinDenomination, coinPresets,
   confettiEnabled, defaultSlots, gmNeedsCredit, hubIcon, palette, parseNumberList, parsePalette,
   registerSettings, spinDuration, spinTurns, tickVolume, ticksEnabled, winSound
@@ -592,6 +596,117 @@ check("coin and slot settings refuse to produce nonsense", () => {
   eq(tickVolume(), 0, "volume is clamped");
   registered.set("tickVolume", "loud");
   eq(tickVolume(), 0.35, "unparseable volume falls back");
+});
+
+
+/* -------------------------------------------- */
+/*  Weighted odds                               */
+/* -------------------------------------------- */
+
+/** Entries in the shape the odds maths wants. */
+function oddsEntries(spec) {
+  return spec.map(([count, odds]) => ({count, odds}));
+}
+
+check("odds default to honest, and clamp to something usable", () => {
+  eq(clampOdds(undefined), DEFAULT_ODDS);
+  eq(clampOdds(null), DEFAULT_ODDS);
+  eq(clampOdds("nonsense"), DEFAULT_ODDS);
+  eq(clampOdds(100), 100);
+  eq(clampOdds(0), MIN_ODDS, "zero would make a wedge unwinnable but still drawn");
+  eq(clampOdds(-50), MIN_ODDS);
+  eq(clampOdds(99999), MAX_ODDS);
+  eq(clampOdds(33.4), 33, "rounded, not truncated toward nonsense");
+});
+
+check("an unweighted wheel is exactly the wheel it always was", () => {
+  // This is the promise: leaving odds alone must not change a single outcome.
+  const entries = oddsEntries([[16, 100], [8, 100], [8, 100], [32, 100]]);
+  assert(isUnweighted(entries), "all-100 reads as unweighted");
+  eq(effectiveWeights(entries), [1600, 800, 800, 3200]);
+  // Proportions identical to the raw slot counts.
+  eq(trueChances(entries).map(c => +(c * 64).toFixed(6)), [16, 8, 8, 32]);
+});
+
+check("odds bend the chance without touching the picture", () => {
+  // A grand prize three slices wide, weighted down to a quarter.
+  const entries = oddsEntries([[3, 25], [61, 100]]);
+  assert(!isUnweighted(entries), "a bent wedge marks the wheel weighted");
+  const [jackpot, filler] = trueChances(entries);
+  // It looks like 3/64 = 4.7%, but really comes up far less often.
+  const looksLike = 3 / 64;
+  assert(jackpot < looksLike / 3, `jackpot ${jackpot} should be well under ${looksLike}`);
+  assert(Math.abs(jackpot + filler - 1) < 1e-9, "chances sum to one");
+  // The slices are untouched: the wedge is still three wide on screen.
+  eq(entries[0].count, 3);
+});
+
+check("raising the odds makes a wedge commoner than it looks", () => {
+  const entries = oddsEntries([[1, 400], [63, 100]]);
+  const [boosted] = trueChances(entries);
+  assert(boosted > 1 / 64, "a boosted single slice beats its share");
+  assert(boosted < 1, "but does not take the whole wheel");
+});
+
+check("weights and odds compose the way a GM would expect", () => {
+  // Doubling the slices and halving the odds should cancel out.
+  const a = trueChances(oddsEntries([[2, 100], [62, 100]]))[0];
+  const b = trueChances(oddsEntries([[4, 50], [62, 100]]))[0];
+  // Not identical (the filler share shifts), but the jackpot share is.
+  assert(Math.abs(a - b) < 1e-9, `widening and halving should cancel: ${a} vs ${b}`);
+});
+
+check("pickEntry walks the cumulative weights correctly", () => {
+  const weights = [300, 100, 600];   // 1000 total
+  eq(pickEntry(weights, 1), 0, "first face");
+  eq(pickEntry(weights, 300), 0, "last face of the first entry");
+  eq(pickEntry(weights, 301), 1, "first face of the second");
+  eq(pickEntry(weights, 400), 1, "last face of the second");
+  eq(pickEntry(weights, 401), 2);
+  eq(pickEntry(weights, 1000), 2, "final face");
+  eq(pickEntry(weights, 1001), -1, "out of range is a fault, not the last prize");
+  eq(pickEntry(weights, 0), -1);
+});
+
+check("a weighted roll reproduces the intended distribution", () => {
+  // Walk every face of the die and count where each one lands. Exhaustive
+  // rather than sampled, so this cannot be flaky.
+  const entries = oddsEntries([[3, 25], [61, 100]]);
+  const weights = effectiveWeights(entries);
+  const total = weights.reduce((a, b) => a + b, 0);
+  const tally = [0, 0];
+  for (let roll = 1; roll <= total; roll++) tally[pickEntry(weights, roll)]++;
+  eq(tally, weights, "every face is accounted for, in proportion");
+  const chances = trueChances(entries);
+  eq(tally.map(n => n / total), chances, "the walk matches the reported chances");
+});
+
+check("an unweighted flat roll and the weighted walk agree", () => {
+  // The two code paths must not disagree about an unweighted wheel.
+  const entries = oddsEntries([[16, 100], [16, 100], [32, 100]]);
+  const weights = effectiveWeights(entries);
+  const total = weights.reduce((a, b) => a + b, 0);
+  const tally = [0, 0, 0];
+  for (let roll = 1; roll <= total; roll++) tally[pickEntry(weights, roll)]++;
+  const viaWalk = tally.map(n => n / total);
+  const viaSlots = [16 / 64, 16 / 64, 32 / 64];
+  viaWalk.forEach((p, i) => assert(Math.abs(p - viaSlots[i]) < 1e-12, `entry ${i}: ${p} vs ${viaSlots[i]}`));
+});
+
+check("slicesOf finds every slice an entry owns", () => {
+  const layout = [0, 1, 0, 2, 1, 0];
+  eq(slicesOf(layout, 0), [0, 2, 5]);
+  eq(slicesOf(layout, 1), [1, 4]);
+  eq(slicesOf(layout, 2), [3]);
+  eq(slicesOf(layout, 9), [], "an entry with no slices returns nothing");
+});
+
+check("a wheel weighted to nothing is caught rather than rolled", () => {
+  // Every wedge at the floor still has weight, so this can only happen with no
+  // entries at all - but the total is what the roll formula depends on.
+  eq(totalWeight([]), 0);
+  eq(totalWeight(oddsEntries([[0, 100]])), 0, "a zero-slot wedge carries no weight");
+  assert(totalWeight(oddsEntries([[1, MIN_ODDS]])) > 0, "the minimum is still winnable");
 });
 
 /* -------------------------------------------- */
