@@ -3,7 +3,7 @@
  * screen.
  *
  * Allocation and presentation live in one dialog because they are one decision
- * in practice — "Azaroth gets a spin on the loot wheel" — and splitting them
+ * in practice — "give the winner a spin on the loot wheel" — and splitting them
  * would mean two trips through the UI every time.
  */
 

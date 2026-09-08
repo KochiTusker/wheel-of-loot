@@ -3,7 +3,7 @@
  *
  * Interactivity is a permission, not a role: the wheel opens for everybody, and
  * whether you can turn it depends only on whether you hold a credit. That makes
- * "give Azaroth a spin" the single decision a GM has to make.
+ * "give this player a spin" the single decision a GM has to make.
  *
  * The ledger is a world-scope setting, which buys two things for free. Only a
  * GM can write it, so a modified client cannot mint itself spins; and every
