@@ -463,7 +463,11 @@
 
 .wol-b-cols {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Not equal halves. The catalogue row carries a name and four small things;
+     the wheel row carries a name, a rarity, three number fields and four
+     buttons. Splitting the window down the middle starved the side that needed
+     the room, and the prize names collapsed to zero width. */
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
   gap: 0.5rem;
   padding: 0.5rem;
   flex: 1 1 auto;
@@ -557,6 +561,39 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The name is the row. Everything optional beside it yields first, and the name
+   holds a floor below which it is no longer worth showing at all — without one,
+   flexbox is happy to give it nothing and the row becomes a line of anonymous
+   numbers. */
+.wol-b-row.entry .nm { min-width: 7.5rem; }
+
+/* The wheel row carries four more controls than the catalogue row, so it buys
+   itself a little room back with a tighter gap. */
+.wol-b-row.entry { gap: 0.3rem; }
+
+/* Below roughly a 1,000px window the controls plus a readable name genuinely do
+   not fit, and something has to give. Scrolling is the honest answer: clipping
+   would hide the remove button, and shrinking the name further would undo the
+   whole point of the floor above. */
+.wol-b-wheel [data-role="entries"] { overflow-x: auto; }
+
+.wol-b-row.entry .rar,
+.wol-b-row.entry .tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wol-b-row .tag {
+  flex: 0 0 auto;
+  font-size: 0.66rem;
+  text-align: right;
+  opacity: 0.55;
+  font-style: italic;
 }
 
 .wol-b-row .rar {
@@ -1268,11 +1305,31 @@
 /* A prize with no item behind it reads differently on purpose: the GM should be
    able to see at a glance which wedges the wheel cannot grant by itself. */
 .wol-b-row.custom .nm { font-style: italic; }
-.wol-b-row.custom .src {
-  font-style: italic;
-  text-transform: lowercase;
-  opacity: 0.5;
+
+/* Already on the wheel, seen from the catalogue side. Drawn on the name rather
+   than in a column of its own, because a column is exactly what this row has no
+   room for — and a plain character rather than an icon font, which the sheet
+   cannot assume is loaded. */
+.wol-b-row.on-wheel { opacity: 0.62; }
+.wol-b-row.on-wheel .nm::before {
+  content: "✓";
+  color: #3f9c5c;
+  font-weight: 700;
+  margin-right: 0.35rem;
+  opacity: 1;
 }
+
+/* What coin is already on offer, under the Add coin control that raises the
+   question. */
+.wol-b-coinsum {
+  padding: 0 0.55rem 0.35rem;
+  font-size: 0.72rem;
+  opacity: 0.75;
+  line-height: 1.5;
+}
+
+.wol-b-coinsum strong { color: #c9a227; }
+.wol-b-coinsum .muted { opacity: 0.55; font-style: italic; }
 
 .wol-b-dry { color: #f2c14e; }
 

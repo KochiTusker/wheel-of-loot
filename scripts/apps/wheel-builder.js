@@ -59,7 +59,7 @@ export class WheelBuilder extends ApplicationV2 {
       icon: "fa-solid fa-arrows-spin",
       resizable: true
     },
-    position: {width: 1180, height: 800},
+    position: {width: 1320, height: 800},
     actions: {
       save: WheelBuilder.#onSave,
       remove: WheelBuilder.#onRemove,
@@ -306,6 +306,7 @@ export class WheelBuilder extends ApplicationV2 {
               </button>
             </div>
           </div>
+          <p class="wol-b-coinsum" data-role="coinsum"></p>
           <ol class="wol-b-list" data-role="entries"></ol>
         </section>
       </div>
@@ -569,12 +570,21 @@ export class WheelBuilder extends ApplicationV2 {
     const rows = this.pool;
     const shown = rows.slice(0, CATALOGUE_CAP);
 
+    // Marked rather than merely filtered. "Hide what is on the wheel" is on by
+    // default and answers most of this, but the moment a GM turns it off to go
+    // looking for something they added earlier, an unmarked list cannot tell
+    // them whether they already added it — and adding a second copy of a prize
+    // is a legitimate thing to do, so it cannot simply be refused either.
+    const used = new Set(this.entries.map(e => e.uuid).filter(Boolean));
+
     list.innerHTML = shown.map(c => {
       const use = USE_LABEL[c.profile];
+      const onWheel = used.has(c.uuid);
       return `
-      <li class="wol-b-row" draggable="true" data-uuid="${c.uuid}">
+      <li class="wol-b-row${onWheel ? " on-wheel" : ""}" draggable="true" data-uuid="${c.uuid}">
         <img src="${foundry.utils.escapeHTML(c.img || "icons/svg/item-bag.svg")}" alt="">
-        <span class="nm">${foundry.utils.escapeHTML(c.name)}</span>
+        <span class="nm"${onWheel ? ` data-tooltip="${t("Builder.AlreadyOnWheel")}"` : ""
+          }>${foundry.utils.escapeHTML(c.name)}</span>
         <span class="src" data-tooltip="${foundry.utils.escapeHTML(c.packLabel)}">${
           foundry.utils.escapeHTML(c.source || "—")}</span>
         ${c.group?.length > 1
@@ -633,20 +643,26 @@ export class WheelBuilder extends ApplicationV2 {
     list.innerHTML = this.entries.map((e, i) => {
       const use = USE_LABEL[e.profile ?? "single"];
       const clash = nameCounts.get(e.name) > 1;
+      // Source book and use profile used to have columns of their own here.
+      // Between them they took 98px off a row that had none to spare, and the
+      // name — the only thing that says what the wedge *is* — was squeezed to
+      // nothing at the default window size. They are browsing facts, already on
+      // show in the catalogue where the choice is made, so on the wheel they
+      // become a tooltip on the name and the space goes back to the name.
+      // The name leads the tooltip as well as the row: a long one ellipsises at
+      // any window size, and hovering is then the only way to read it.
+      const meta = [e.name];
+      if (e.uuid && e.source) meta.push(e.source);
+      if (e.uuid && adapter.tracksUses) meta.push(t(use.key));
+      const tip = ` data-tooltip="${foundry.utils.escapeHTML(meta.join(" · "))}"`;
       return `
       <li class="wol-b-row entry${e.isCoin ? " coin" : ""}${e.custom ? " custom" : ""}${
         e.missing ? " missing" : ""}${clash ? " clash" : ""}" data-index="${i}">
         <img src="${foundry.utils.escapeHTML(e.img || "icons/svg/item-bag.svg")}" alt="">
-        <span class="nm">${e.missing ? `<i class="fa-solid fa-triangle-exclamation" data-tooltip="${
+        <span class="nm"${tip}>${e.missing ? `<i class="fa-solid fa-triangle-exclamation" data-tooltip="${
           t("Builder.MissingItem")}"></i> ` : ""}${clash ? `<i class="fa-solid fa-clone" data-tooltip="${
           t("Builder.NameClash")}"></i> ` : ""}${foundry.utils.escapeHTML(e.name)}</span>
-        ${e.uuid
-          ? `<span class="src" data-tooltip="${t("Builder.SourceBook")}">${
-              foundry.utils.escapeHTML(e.source || "—")}</span>`
-          : `<span class="src">${e.custom ? t("Builder.CustomTag") : ""}</span>`}
-        ${adapter.tracksUses ? (e.uuid
-          ? `<span class="use u-${e.profile ?? "single"}" data-tooltip="${t(use.key)}">${use.tag}</span>`
-          : `<span class="use"></span>`) : ""}
+        <span class="tag">${e.custom ? t("Builder.CustomTag") : ""}</span>
         ${e.rarity ? `<span class="rar r-${e.rarity}">${adapter.rarityLabel(e.rarity)}</span>` : `<span class="rar"></span>`}
         <span class="slots">
           <button type="button" data-action="bump" data-index="${i}" data-delta="-1"><i class="fa-solid fa-minus"></i></button>
@@ -686,6 +702,64 @@ export class WheelBuilder extends ApplicationV2 {
     }).join("");
     this.#renderTally(content);
     this.#renderChances(content);
+    this.#renderCoinSummary(content);
+  }
+
+  /**
+   * What coin is already on offer.
+   *
+   * "Add coin" was a button with no memory. A GM three wedges into a wheel
+   * could not see that two of them were already gold, let alone what the wheel
+   * was worth — and the one number that answers "how much gold is on offer" is
+   * not the sum of the wedges, it is the *average payout of a spin*, because a
+   * 500 gp wedge one slice wide and weighted down to a quarter is not a 500 gp
+   * prize in any sense the players will experience.
+   *
+   * Grouped by denomination, since nothing stops a GM mixing gold and silver,
+   * and adding them together would be a lie.
+   */
+  #renderCoinSummary(content) {
+    const box = content.querySelector("[data-role=coinsum]");
+    if (!box) return;
+
+    const adapter = systemAdapter();
+    const chances = trueChances(this.entries.map(e => ({
+      count: e.weight, odds: e.odds, depleted: e.stock === 0
+    })));
+
+    const byDenom = new Map();
+    let slots = 0;
+    this.entries.forEach((entry, i) => {
+      if (entry.uuid) return;
+      const coin = adapter.parseCurrency(entry.name);
+      if (!coin) return;
+      slots += entry.weight;
+      const seen = byDenom.get(coin.denom) ?? {wedges: [], expected: 0};
+      seen.wedges.push({amount: coin.amount, weight: entry.weight});
+      seen.expected += chances[i] * coin.amount;
+      byDenom.set(coin.denom, seen);
+    });
+
+    if (!byDenom.size) {
+      box.innerHTML = `<span class="muted">${t("Builder.NoCoinYet")}</span>`;
+      return;
+    }
+
+    const list = [...byDenom].map(([denom, seen]) => seen.wedges
+      .sort((a, b) => b.amount - a.amount)
+      .map(w => `${w.amount}&nbsp;${denom}&nbsp;&times;${w.weight}`)
+      .join(" · ")).join(" &nbsp;·&nbsp; ");
+
+    const expected = [...byDenom]
+      .map(([denom, seen]) => `${seen.expected.toFixed(seen.expected < 10 ? 1 : 0)} ${denom}`)
+      .join(" + ");
+
+    box.innerHTML = t("Builder.CoinSummary", {
+      list,
+      slots,
+      total: this.slotTotal,
+      expected: `<strong>${expected}</strong>`
+    });
   }
 
   /**

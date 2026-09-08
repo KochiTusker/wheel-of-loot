@@ -17,6 +17,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   flags it and offers to keep the wedge as a custom prize. Its name, art and
   rarity are already on the table result, and its slots, odds, jackpot and
   stock are preserved — so a broken link no longer means rebuilding the wedge.
+- **What coin is already on offer.** "Add coin" was a button with no memory.
+  The coin bar now lists every coin wedge on the wheel with its width, and says
+  what a spin is worth on average — which accounts for both how wide each coin
+  wedge is and how far its odds have been bent, and is the number that actually
+  answers "how much gold is on this thing".
+- **Items already on the wheel are marked in the catalogue**, so turning off
+  "hide items already on the wheel" tells you which ones those are. Adding a
+  second copy is still allowed; it is a legitimate thing to want.
 - **Dry run.** Spin the wheel exactly as the table will meet it: the real
   layout, the real art, the real odds, the real confetti. On your screen only —
   no session, no broadcast, no credit spent, nothing granted, nothing written.
@@ -83,6 +91,12 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Prize names were invisible in the builder.** The "On the wheel" row carried
+  so many fixed-width columns that the name — the only thing saying what a
+  wedge *is* — was squeezed to zero pixels at the default window size, leaving
+  a list of anonymous icons and numbers. The source book and use profile have
+  moved into the name's tooltip, the two panes no longer split the window down
+  the middle, and the name now holds a floor that the rarity yields to first.
 - **A claimed wedge could be won a second time.** Depletion sets a wedge's
   weight to zero, but it does not bend anyone's *odds* — so a wheel that had
   never been weighted still took the plain `1d<slices>` roll, which happily
