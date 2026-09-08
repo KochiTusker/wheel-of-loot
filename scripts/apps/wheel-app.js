@@ -167,6 +167,21 @@ export class LootWheel {
     this.actorName = null;
   }
 
+  /**
+   * The look and rules this particular wheel is running under.
+   *
+   * A live wheel is handed both by the GM, already resolved against the table's
+   * own overrides. A preview supplies its own. Anything absent falls back to the
+   * world settings, which is what makes both cases work through one path.
+   */
+  get look() {
+    return this.config.appearance ?? {};
+  }
+
+  get rules() {
+    return this.config.rules ?? {};
+  }
+
   /** True only while this client is the one whose spin is being resolved. */
   get isSpinner() {
     return game.user.id === this.spinnerId;
@@ -177,7 +192,7 @@ export class LootWheel {
    * the GM to play by the same rules can say so.
    */
   get canSpin() {
-    if (game.user.isGM && !gmNeedsCredit()) return true;
+    if (game.user.isGM && !(this.rules.gmNeedsCredit ?? gmNeedsCredit())) return true;
     return myCredits() > 0;
   }
 
@@ -269,8 +284,9 @@ export class LootWheel {
     if (this.config.preview) root.classList.add("wol-preview");
     // Drives the backdrop gradient, so the canvas can show through as much or
     // as little as the GM wants.
-    root.style.setProperty("--wol-dim", String(backdrop()));
-    root.style.setProperty("--wol-blur", backdrop() < 0.3 ? "0px" : "6px");
+    const dim = this.look.backdrop ?? backdrop();
+    root.style.setProperty("--wol-dim", String(dim));
+    root.style.setProperty("--wol-blur", dim < 0.3 ? "0px" : "6px");
     root.innerHTML = `
       <canvas class="wol-confetti"></canvas>
       <div class="wol-stage">
@@ -281,7 +297,7 @@ export class LootWheel {
         <div class="wol-wheelbox">
           ${this.#wheelSvg()}
           <div class="wol-pointer" aria-hidden="true"></div>
-          <div class="wol-hub"><img alt="" src="${foundry.utils.escapeHTML(this.config.hubIcon ?? hubIcon())}"></div>
+          <div class="wol-hub"><img alt="" src="${foundry.utils.escapeHTML(this.config.hubIcon ?? this.look.hubIcon ?? hubIcon())}"></div>
         </div>
         <footer class="wol-actions"></footer>
       </div>
@@ -308,7 +324,7 @@ export class LootWheel {
     const outer = 430;
     const inner = 118;
     const sweep = 360 / total;
-    const backgrounds = sliceColours(total, this.config.palette ?? palette());
+    const backgrounds = sliceColours(total, this.config.palette ?? this.look.palette ?? palette());
     const budget = labelBudget(total);
     const fontSize = labelFontSize(total);
 
@@ -406,7 +422,8 @@ export class LootWheel {
         spin.className = "wol-btn wol-btn-spin";
         // A GM spins without spending anything, so show a badge that says so
         // rather than a misleading "0".
-        const badge = mine > 0 ? String(mine) : (game.user.isGM && !gmNeedsCredit() ? t("Wheel.GMBadge") : "0");
+        const freeGM = game.user.isGM && !(this.rules.gmNeedsCredit ?? gmNeedsCredit());
+      const badge = mine > 0 ? String(mine) : (freeGM ? t("Wheel.GMBadge") : "0");
         spin.innerHTML = `<i class="fa-solid fa-arrows-spin"></i> ${t("Wheel.Spin")}
           <span class="wol-credit">${badge}</span>`;
         spin.addEventListener("click", () => this.#onSpinClicked(spin), {once: true});
@@ -476,7 +493,7 @@ export class LootWheel {
     const currentMod = (((this.rotation % 360) + 360) % 360);
     let advance = desired - currentMod;
     if (advance < 0) advance += 360;
-    const final = this.rotation + (360 * spinTurns()) + advance;
+    const final = this.rotation + (360 * (this.rules.turns ?? spinTurns())) + advance;
     this.rotation = final;
 
     // A six-second rotation of a large object is exactly what reduced-motion
@@ -560,7 +577,7 @@ export class LootWheel {
 
     reveal.querySelector(".wol-reveal-card").classList.toggle("jackpot", jackpot);
 
-    if (confettiEnabled()) {
+    if (this.look.confetti ?? confettiEnabled()) {
       const canvas = this.root.querySelector(".wol-confetti");
       // A grand prize earns a bigger burst; anything less and the flourish
       // stops meaning anything.
@@ -587,7 +604,7 @@ export class LootWheel {
         box.append(accept);
       }
 
-      if (allowGift()) {
+      if (this.rules.allowGift ?? allowGift()) {
         const gift = document.createElement("button");
         gift.type = "button";
         gift.className = "wol-btn wol-btn-gift";
@@ -596,7 +613,7 @@ export class LootWheel {
         box.append(gift);
       }
 
-      if (allowRefuse()) {
+      if (this.rules.allowRefuse ?? allowRefuse()) {
         const reject = document.createElement("button");
         reject.type = "button";
         reject.className = "wol-btn wol-btn-reject";
@@ -630,7 +647,7 @@ export class LootWheel {
    * problem, not a reason the prize should not appear.
    */
   #playWinSound() {
-    const src = winSound();
+    const src = this.look.winSound ?? winSound();
     if (!src) return;
     try {
       foundry.audio.AudioHelper.play({src, volume: 0.7, autoplay: true, loop: false}, false);

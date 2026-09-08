@@ -27,6 +27,13 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   banner on the reveal.
 - **A near-miss beat.** The wheel now stops a third of a slice short and creeps
   home, which is what turns "it stopped" into "it nearly went past".
+- **Per-wheel appearance and rules.** Any wheel can override the world settings:
+  its own palette, hub, speaker, confetti, backdrop, spin duration and rotations,
+  win sound, and its own rules for gifting, refusing, whether the GM needs a
+  spin, auto-close and where the result card goes. Open it from **This wheel’s
+  look** in the builder. A blank field means "follow the world setting", and the
+  placeholder shows what that currently is. The launcher marks a customised
+  wheel with a ✦. Rules are enforced on the GM, not just hidden on the client.
 - **Undo the last win.** A quiet button on the result card takes the prize back
   and refunds the spin. One deep, GM only, and it verifies the item is still the
   one the wheel created before removing anything.

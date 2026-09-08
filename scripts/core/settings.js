@@ -139,11 +139,53 @@ export function parseNumberList(input, limit = 12) {
 }
 
 /* -------------------------------------------- */
+/*  Per-wheel overrides                         */
+/* -------------------------------------------- */
+
+/**
+ * Settings a single wheel may override.
+ *
+ * The world settings are the house style; a wheel is allowed to disagree. A
+ * Dragon's Hoard and a Fae Bargain should not look the same, and a wheel of
+ * cursed items might reasonably forbid refusing when the rest of the table's
+ * wheels allow it.
+ *
+ * Not everything is here. The tick sound is per-client taste rather than a
+ * property of the wheel, and the builder defaults describe how wheels are
+ * *made* rather than how one behaves.
+ */
+export const OVERRIDABLE = [
+  S.THEME, S.PALETTE, S.PALETTE_CUSTOM, S.HUB_ICON, S.WHEEL_SPEAKER,
+  S.CONFETTI, S.BACKDROP,
+  S.SPIN_SECONDS, S.SPIN_TURNS, S.WIN_SOUND,
+  S.ALLOW_GIFT, S.ALLOW_REFUSE, S.GM_NEEDS_CREDIT, S.AUTO_CLOSE, S.CHAT_CARD
+];
+
+/** @returns {object} Whatever this wheel overrides; empty when it defers entirely. */
+export function wheelOverrides(table) {
+  try {
+    return table?.getFlag?.(MODULE_ID, "overrides") ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/* -------------------------------------------- */
 /*  Accessors                                   */
 /* -------------------------------------------- */
 
-/** Raw read, with a guard so a call before `init` cannot break a render. */
-function read(key, fallback) {
+/**
+ * Raw read, with a guard so a call before `init` cannot break a render.
+ *
+ * Every accessor takes an optional wheel. An override only counts when it holds
+ * a real value — an empty string is how the form says "defer to the world
+ * setting", so it must fall through rather than blanking the wheel.
+ */
+function read(key, fallback, table) {
+  if (table) {
+    const override = wheelOverrides(table)[key];
+    if (override !== undefined && override !== null && override !== "") return override;
+  }
   try {
     const value = game.settings.get(MODULE_ID, key);
     return value === undefined ? fallback : value;
@@ -158,27 +200,27 @@ function read(key, fallback) {
  * A custom palette that does not parse to at least two colours falls back to
  * the named one rather than drawing an unreadable wheel.
  */
-export function palette() {
-  const name = read(S.PALETTE, "fairground");
+export function palette(table) {
+  const name = read(S.PALETTE, "fairground", table);
   if (name === "custom") {
-    const custom = parsePalette(read(S.PALETTE_CUSTOM, ""));
+    const custom = parsePalette(read(S.PALETTE_CUSTOM, "", table));
     if (custom.length >= 2) return custom;
     return PALETTES.fairground;
   }
   return PALETTES[name] ?? PALETTES.fairground;
 }
 
-export function hubIcon() {
-  return read(S.HUB_ICON, "icons/svg/chest.svg") || "icons/svg/chest.svg";
+export function hubIcon(table) {
+  return read(S.HUB_ICON, "icons/svg/chest.svg", table) || "icons/svg/chest.svg";
 }
 
-export function wheelSpeaker() {
-  const name = read(S.WHEEL_SPEAKER, "");
+export function wheelSpeaker(table) {
+  const name = read(S.WHEEL_SPEAKER, "", table);
   return name.trim() || game.i18n.localize("WHEELOFLOOT.Card.Speaker");
 }
 
-export function confettiEnabled() {
-  return read(S.CONFETTI, true) !== false;
+export function confettiEnabled(table) {
+  return read(S.CONFETTI, true, table) !== false;
 }
 
 /**
@@ -189,8 +231,8 @@ export function confettiEnabled() {
  * near-black throws that away, so how far to dim is the GM's call. 0 shows the
  * scene untouched; 1 is the near-opaque original.
  */
-export function backdrop() {
-  const v = Number(read(S.BACKDROP, 0.82));
+export function backdrop(table) {
+  const v = Number(read(S.BACKDROP, 0.82, table));
   return Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0.82));
 }
 
@@ -214,13 +256,13 @@ export function reduceMotion() {
 }
 
 /** How long the wheel takes to settle, in milliseconds. */
-export function spinDuration() {
-  return Math.round((Number(read(S.SPIN_SECONDS, 6)) || 6) * 1000);
+export function spinDuration(table) {
+  return Math.round((Number(read(S.SPIN_SECONDS, 6, table)) || 6) * 1000);
 }
 
 /** Full rotations before the wheel settles. */
-export function spinTurns() {
-  return Math.max(1, Math.round(Number(read(S.SPIN_TURNS, 6)) || 6));
+export function spinTurns(table) {
+  return Math.max(1, Math.round(Number(read(S.SPIN_TURNS, 6, table)) || 6));
 }
 
 /** Client-scope: whether this player wants the fairground ticks. */
@@ -235,31 +277,31 @@ export function tickVolume() {
 }
 
 /** Optional sound played when the wheel lands. Empty means silence. */
-export function winSound() {
-  return (read(S.WIN_SOUND, "") || "").trim();
+export function winSound(table) {
+  return (read(S.WIN_SOUND, "", table) || "").trim();
 }
 
-export function allowGift() {
-  return read(S.ALLOW_GIFT, true) !== false;
+export function allowGift(table) {
+  return read(S.ALLOW_GIFT, true, table) !== false;
 }
 
-export function allowRefuse() {
-  return read(S.ALLOW_REFUSE, true) !== false;
+export function allowRefuse(table) {
+  return read(S.ALLOW_REFUSE, true, table) !== false;
 }
 
 /** When true, a GM must hold a credit like anyone else. */
-export function gmNeedsCredit() {
-  return read(S.GM_NEEDS_CREDIT, false) === true;
+export function gmNeedsCredit(table) {
+  return read(S.GM_NEEDS_CREDIT, false, table) === true;
 }
 
 /** When false, the wheel stays open after the last spin is spent. */
-export function autoClose() {
-  return read(S.AUTO_CLOSE, true) !== false;
+export function autoClose(table) {
+  return read(S.AUTO_CLOSE, true, table) !== false;
 }
 
 /** "public" | "gm" | "none" */
-export function chatCardMode() {
-  return read(S.CHAT_CARD, "public");
+export function chatCardMode(table) {
+  return read(S.CHAT_CARD, "public", table);
 }
 
 export function defaultSlots() {
@@ -281,6 +323,64 @@ export function coinPresets() {
  */
 export function coinDenomination() {
   return (read(S.COIN_DENOMINATION, "gp") || "gp").trim().toLowerCase();
+}
+
+/* -------------------------------------------- */
+/*  Resolved wheel configuration                */
+/* -------------------------------------------- */
+
+/**
+ * Everything one wheel's look and rules resolve to, as plain data.
+ *
+ * Resolved on the GM and broadcast rather than read from the table on each
+ * client, for two reasons. A player may not have permission to see the
+ * RollTable at all, so their client could not read its flags even though they
+ * are watching the wheel it drives. And resolving once means every screen is
+ * agreeing about the same wheel rather than each deciding for itself — which is
+ * the same reason the layout is broadcast rather than recomputed.
+ *
+ * @param {RollTable} table
+ * @returns {object}
+ */
+export function resolveWheelConfig(table) {
+  return {
+    appearance: {
+      palette: palette(table),
+      hubIcon: hubIcon(table),
+      confetti: confettiEnabled(table),
+      backdrop: backdrop(table),
+      winSound: winSound(table)
+    },
+    rules: {
+      allowGift: allowGift(table),
+      allowRefuse: allowRefuse(table),
+      gmNeedsCredit: gmNeedsCredit(table),
+      autoClose: autoClose(table),
+      chatCard: chatCardMode(table),
+      spinMs: spinDuration(table),
+      turns: spinTurns(table)
+    },
+    speaker: wheelSpeaker(table)
+  };
+}
+
+/**
+ * Write a wheel's overrides. Keys holding no value are removed entirely, so a
+ * wheel that defers to the world settings carries no flag rather than a flag
+ * full of blanks.
+ *
+ * @param {RollTable} table
+ * @param {object} overrides
+ */
+export async function saveWheelOverrides(table, overrides) {
+  const clean = {};
+  for (const key of OVERRIDABLE) {
+    const value = overrides[key];
+    if (value === undefined || value === null || value === "") continue;
+    clean[key] = value;
+  }
+  if (!Object.keys(clean).length) return table.unsetFlag(MODULE_ID, "overrides");
+  return table.setFlag(MODULE_ID, "overrides", clean);
 }
 
 /* -------------------------------------------- */

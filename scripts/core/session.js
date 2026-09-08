@@ -67,7 +67,11 @@ export async function registerSession(payload) {
     sessionId: payload.sessionId,
     tableName: payload.tableName,
     entries: payload.entries,
-    layout: payload.layout
+    layout: payload.layout,
+    // Every client draws and behaves from the same resolved configuration,
+    // rather than each reading the world settings for itself.
+    appearance: payload.wheel?.appearance,
+    rules: payload.wheel?.rules
   });
   return payload.sessionId;
 }
@@ -111,7 +115,7 @@ export async function requestSpin(sessionId) {
 
   // A GM normally spins for free; when the table has asked for it, they are
   // treated exactly like a player for both the credit check and the debit.
-  const isGM = user.isGM && !gmNeedsCredit();
+  const isGM = user.isGM && !(session.wheel?.rules?.gmNeedsCredit ?? gmNeedsCredit());
   const held = creditsFor(caller);
 
   if (!isGM && held < 1) {
@@ -151,7 +155,7 @@ export async function requestSpin(sessionId) {
   await socket().executeForEveryone("playSpin", {
     sessionId,
     slice,
-    durationMs: spinDuration(),
+    durationMs: session.wheel?.rules?.spinMs ?? spinDuration(),
     spinnerId: caller,
     spinnerName: user.name,
     actorName: session.currentActorName,
@@ -238,6 +242,12 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
   let actor = session.currentActorId ? game.actors.get(session.currentActorId) : null;
   let gifted = null;
   if (accepted && giftActorId) {
+    // The client hides the button, but hiding is not enforcing.
+    if (!(session.wheel?.rules?.allowGift ?? true)) {
+      console.warn("Wheel of Loot | gift refused; this wheel does not allow it");
+      await tell(caller, t("Notify.GiftNotAllowed"));
+      return;
+    }
     const target = game.actors.get(giftActorId);
     if (!target || !adapter.isRewardable(target)) {
       console.warn(`Wheel of Loot | rejected gift to ${giftActorId}`);
@@ -309,7 +319,7 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
   session.currentActorName = null;
   session.giftedTo = null;
 
-  if (totalCredits() > 0 || !autoClose()) {
+  if (totalCredits() > 0 || !(session.wheel?.rules?.autoClose ?? autoClose())) {
     await socket().executeForEveryone("rearmWheel", sessionId);
   } else {
     sessions.delete(sessionId);
@@ -322,7 +332,7 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
 /* -------------------------------------------- */
 
 async function postResultCard(session, accepted, granted, coins) {
-  const mode = chatCardMode();
+  const mode = session.wheel?.rules?.chatCard ?? chatCardMode();
   if (mode === "none") return;
   const esc = foundry.utils.escapeHTML;
   const entry = session.entry;
@@ -364,7 +374,7 @@ async function postResultCard(session, accepted, granted, coins) {
         </div>
         ${verdict}
       </div>`,
-    speaker: {alias: wheelSpeaker()},
+    speaker: {alias: session.wheel?.speaker || wheelSpeaker()},
     // A GM-only card keeps the record without spoiling what is still on the
     // wheel for the players who have not spun yet.
     whisper: mode === "gm" ? ChatMessage.getWhisperRecipients("GM").map(u => u.id) : undefined,
@@ -385,14 +395,15 @@ export function sessionHandlers() {
 }
 
 /** Present a wheel to the whole table, from wherever the GM pressed the button. */
-export async function startSession({table, entries, layout}) {
+export async function startSession({table, entries, layout, wheel}) {
   const sessionId = foundry.utils.randomID();
   await callOwner("registerSession", {
     sessionId,
     tableUuid: table.uuid,
     tableName: table.name,
     entries,
-    layout
+    layout,
+    wheel
   });
   return sessionId;
 }

@@ -58,6 +58,7 @@ export class WheelBuilder extends ApplicationV2 {
       expand: WheelBuilder.#onExpand,
       variants: WheelBuilder.#onVariants,
       jackpot: WheelBuilder.#onJackpot,
+      wheelSettings: WheelBuilder.#onWheelSettings,
       rerollOne: WheelBuilder.#onRerollOne,
       rollWheel: WheelBuilder.#onRollWheel,
       fill: WheelBuilder.#onFill,
@@ -243,6 +244,10 @@ export class WheelBuilder extends ApplicationV2 {
               <button type="button" class="wol-b-ghost" data-action="fill"
                 data-tooltip="${t("Builder.FillHint")}">
                 <i class="fa-solid fa-wand-sparkles"></i> ${t("Builder.Fill")}
+              </button>
+              <button type="button" class="wol-b-ghost" data-action="wheelSettings"
+                data-tooltip="${t("Builder.WheelSettingsHint")}">
+                <i class="fa-solid fa-palette"></i> ${t("Builder.WheelSettings")}
               </button>
               <button type="button" class="wol-b-ghost" data-action="clearWheel">
                 <i class="fa-solid fa-trash-can"></i> ${t("Builder.Clear")}
@@ -892,6 +897,18 @@ export class WheelBuilder extends ApplicationV2 {
       modal: true
     });
     return (!result || result === "cancel") ? null : result;
+  }
+
+  /**
+   * Open the settings form scoped to this wheel.
+   *
+   * The same form as the world settings, because the things a wheel can
+   * override are the same things — only here a blank field means "whatever the
+   * world says" rather than "nothing".
+   */
+  static async #onWheelSettings(event, target) {
+    const {WheelSettings} = await import("./settings-menu.js");
+    new WheelSettings({wheel: this.table}).render({force: true});
   }
 
   static async #onClearWheel(event, target) {

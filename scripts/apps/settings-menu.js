@@ -11,7 +11,10 @@
  */
 
 import {MODULE_ID, t} from "../core/constants.js";
-import {PALETTES, S, THEMES, parseNumberList, parsePalette} from "../core/settings.js";
+import {
+  OVERRIDABLE, PALETTES, S, THEMES, parseNumberList, parsePalette,
+  saveWheelOverrides, wheelOverrides
+} from "../core/settings.js";
 import {MAX_SLOTS, MIN_SLOTS, SLOT_PRESETS, sliceColours} from "../core/wheel-data.js";
 
 const {ApplicationV2} = foundry.applications.api;
@@ -43,17 +46,59 @@ export class WheelSettings extends ApplicationV2 {
     }
   };
 
+  /**
+   * @param {object} [options]
+   * @param {RollTable} [options.wheel]  Scope the form to one wheel rather than
+   *                                     the world. Fields left blank defer to
+   *                                     the world setting.
+   */
   constructor(options = {}) {
     super(options);
     this.tab = "appearance";
+    this.wheel = options.wheel ?? null;
   }
 
-  /** Current stored values, read once so the form edits a snapshot. */
+  /** True when this form is editing one wheel rather than the house style. */
+  get scoped() {
+    return !!this.wheel;
+  }
+
+  get title() {
+    return this.scoped
+      ? t("Setting.WheelTitle", {name: this.wheel.name})
+      : t("Setting.MenuName");
+  }
+
+  /**
+   * Current values, read once so the form edits a snapshot.
+   *
+   * Scoped to a wheel, a field holds only what that wheel overrides — blank
+   * means "whatever the world says", which is what the placeholder shows.
+   */
   #read() {
+    if (this.scoped) {
+      const overrides = wheelOverrides(this.wheel);
+      return Object.fromEntries(OVERRIDABLE.map(key => [key, overrides[key] ?? ""]));
+    }
     const get = key => game.settings.get(MODULE_ID, key);
     return Object.fromEntries(Object.entries(S)
       .filter(([name]) => !["CREDITS", "MIGRATED", "LAST_GRANT"].includes(name))
       .map(([, key]) => [key, get(key)]));
+  }
+
+  /**
+   * What the world setting says, phrased for a placeholder.
+   *
+   * A blank field means "whatever the world says", and a GM should not have to
+   * open the other form to find out what that is.
+   */
+  #globalPlaceholder(key) {
+    let value;
+    try { value = game.settings.get(MODULE_ID, key); } catch { return ""; }
+    if (value === true) return t("Setting.On");
+    if (value === false) return t("Setting.Off");
+    if (value === "" || value === null || value === undefined) return t("Setting.Nothing");
+    return String(value);
   }
 
   async _prepareContext() {
@@ -70,7 +115,16 @@ export class WheelSettings extends ApplicationV2 {
     const root = document.createElement("div");
     root.className = "wol-settings-body";
 
-    const check = (key, label, hint) => `
+    // A checkbox has two states and a scoped field needs three, so scoped it
+    // becomes a select: defer, on, or off.
+    const check = (key, label, hint) => {
+      if (this.scoped) {
+        return select(key, label, [
+          {value: "true", label: t("Setting.On")},
+          {value: "false", label: t("Setting.Off")}
+        ], hint);
+      }
+      return `
       <div class="wol-set-row">
         <label class="wol-set-check">
           <input type="checkbox" name="${key}" ${v[key] ? "checked" : ""}>
@@ -78,13 +132,14 @@ export class WheelSettings extends ApplicationV2 {
         </label>
         ${hint ? `<p class="notes">${t(hint)}</p>` : ""}
       </div>`;
+    };
 
     const text = (key, label, hint, {picker = null, placeholder = ""} = {}) => `
       <div class="wol-set-row">
         <label for="wol-${key}">${t(label)}</label>
         <div class="wol-set-input">
           <input type="text" id="wol-${key}" name="${key}" value="${esc(String(v[key] ?? ""))}"
-            placeholder="${esc(placeholder)}">
+            placeholder="${esc(this.scoped ? this.#globalPlaceholder(key) : placeholder)}">
           ${picker ? `<button type="button" class="wol-b-ghost" data-action="pickFile"
             data-target="${key}" data-filetype="${picker}" data-tooltip="${t("Setting.Browse")}">
             <i class="fa-solid fa-folder-open"></i></button>` : ""}
@@ -95,25 +150,34 @@ export class WheelSettings extends ApplicationV2 {
     const number = (key, label, hint, {min, max, step = 1}) => `
       <div class="wol-set-row">
         <label for="wol-${key}">${t(label)}</label>
-        <input type="number" id="wol-${key}" name="${key}" value="${Number(v[key])}"
+        <input type="number" id="wol-${key}" name="${key}"
+          value="${v[key] === "" ? "" : Number(v[key])}"
+          placeholder="${esc(this.scoped ? this.#globalPlaceholder(key) : "")}"
           min="${min}" max="${max}" step="${step}">
         ${hint ? `<p class="notes">${t(hint)}</p>` : ""}
       </div>`;
 
-    const select = (key, label, options, hint) => `
+    const select = (key, label, options, hint) => {
+      // Scoped, the first option is always "leave this to the world setting".
+      const all = this.scoped
+        ? [{value: "", label: t("Setting.UseGlobal", {value: this.#globalPlaceholder(key)})}, ...options]
+        : options;
+      return `
       <div class="wol-set-row">
         <label for="wol-${key}">${t(label)}</label>
         <select id="wol-${key}" name="${key}">
-          ${options.map(o => `<option value="${esc(o.value)}"${
+          ${all.map(o => `<option value="${esc(o.value)}"${
             String(o.value) === String(v[key]) ? " selected" : ""}>${esc(o.label)}</option>`).join("")}
         </select>
         ${hint ? `<p class="notes">${t(hint)}</p>` : ""}
       </div>`;
+    };
 
     root.innerHTML = `
       <nav class="wol-set-tabs">
-        ${TABS.map(tab => `<button type="button" data-action="tab" data-tab="${tab}"
-          class="${tab === this.tab ? "active" : ""}">${t(`Setting.Tab.${tab}`)}</button>`).join("")}
+        ${TABS.filter(tab => !(this.scoped && tab === "builder"))
+          .map(tab => `<button type="button" data-action="tab" data-tab="${tab}"
+            class="${tab === this.tab ? "active" : ""}">${t(`Setting.Tab.${tab}`)}</button>`).join("")}
       </nav>
 
       <section class="wol-set-page" data-tab="appearance">
@@ -152,7 +216,7 @@ export class WheelSettings extends ApplicationV2 {
       <section class="wol-set-page" data-tab="spin" hidden>
         ${number(S.SPIN_SECONDS, "Setting.SpinSeconds", "Setting.SpinSecondsHint", {min: 2, max: 20, step: 0.5})}
         ${number(S.SPIN_TURNS, "Setting.SpinTurns", "Setting.SpinTurnsHint", {min: 1, max: 20})}
-        ${number(S.TICK_VOLUME, "Setting.TickVolume", "Setting.TickVolumeHint", {min: 0, max: 1, step: 0.05})}
+        ${this.scoped ? "" : number(S.TICK_VOLUME, "Setting.TickVolume", "Setting.TickVolumeHint", {min: 0, max: 1, step: 0.05})}
         ${text(S.WIN_SOUND, "Setting.WinSound", "Setting.WinSoundHint", {picker: "audio"})}
       </section>
 
@@ -168,7 +232,7 @@ export class WheelSettings extends ApplicationV2 {
         ], "Setting.ChatCardHint")}
       </section>
 
-      <section class="wol-set-page" data-tab="builder" hidden>
+      <section class="wol-set-page" data-tab="builder"${this.scoped ? " hidden data-unavailable" : ""} hidden>
         ${select(S.DEFAULT_SLOTS, "Setting.DefaultSlots",
           SLOT_PRESETS.map(n => ({value: n, label: t("Builder.NSlices", {n})})), "Setting.DefaultSlotsHint")}
         ${text(S.COIN_PRESETS, "Setting.CoinPresets", "Setting.CoinPresetsHint")}
@@ -315,7 +379,9 @@ export class WheelSettings extends ApplicationV2 {
   static async #onPreview(event, target) {
     const {LootWheel} = await import("./wheel-app.js");
     const {colours} = this.#livePalette(this.element);
-    const hub = this.element.querySelector(`[name="${S.HUB_ICON}"]`)?.value || "icons/svg/chest.svg";
+    const hub = this.element.querySelector(`[name="${S.HUB_ICON}"]`)?.value
+      || this.#globalPlaceholder(S.HUB_ICON)
+      || "icons/svg/chest.svg";
 
     const names = [
       t("Setting.SampleGrand"), t("Setting.SampleCommon"), t("Setting.SampleCoin"),
@@ -341,19 +407,29 @@ export class WheelSettings extends ApplicationV2 {
   static async #onSave(event, target) {
     const form = this.element;
     const writes = [];
+    const keys = this.scoped ? OVERRIDABLE : Object.values(S);
 
-    for (const [, key] of Object.entries(S)) {
+    for (const key of keys) {
       if (["spinCredits", "migratedFrom", "lastGrant"].includes(key)) continue;
       const el = form.querySelector(`[name="${key}"]`);
       if (!el) continue;
       let value;
       if (el.type === "checkbox") value = el.checked;
-      else if (el.type === "number") value = Number(el.value);
+      else if (el.type === "number") value = el.value === "" ? "" : Number(el.value);
       else value = el.value;
+      // Scoped, a booleanish select carries strings; turn them back into the
+      // types the accessors expect, and leave "" alone as "defer".
+      if (this.scoped && (value === "true" || value === "false")) value = value === "true";
       writes.push([key, value]);
     }
 
     try {
+      if (this.scoped) {
+        await saveWheelOverrides(this.wheel, Object.fromEntries(writes));
+        ui.notifications.info(t("Setting.WheelSaved", {name: this.wheel.name}));
+        this.close();
+        return;
+      }
       for (const [key, value] of writes) await game.settings.set(MODULE_ID, key, value);
       ui.notifications.info(t("Setting.Saved"));
       // A wheel already on screen was drawn with the old palette and icon, so
@@ -370,11 +446,20 @@ export class WheelSettings extends ApplicationV2 {
 
   static async #onReset(event, target) {
     const ok = await foundry.applications.api.DialogV2.confirm({
-      window: {title: t("Setting.ResetTitle")},
-      content: `<p>${t("Setting.ResetBody")}</p>`,
+      window: {title: this.scoped ? t("Setting.ClearTitle") : t("Setting.ResetTitle")},
+      content: `<p>${this.scoped ? t("Setting.ClearBody", {name: this.wheel.name}) : t("Setting.ResetBody")}</p>`,
       modal: true
     });
     if (!ok) return;
+
+    // Scoped, resetting means dropping every override so the wheel follows the
+    // house style again — never touching the world settings themselves.
+    if (this.scoped) {
+      await saveWheelOverrides(this.wheel, {});
+      ui.notifications.info(t("Setting.Cleared", {name: this.wheel.name}));
+      this.render();
+      return;
+    }
     for (const [name, key] of Object.entries(S)) {
       // The ledger is live game state, not a preference — resetting the look of
       // the wheel must never confiscate somebody's outstanding spin.

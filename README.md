@@ -78,6 +78,20 @@ flip.
 
 Nothing is written until **Save**, so experimenting is free.
 
+## Every wheel can look and behave differently
+
+The world settings are the house style; any individual wheel may disagree.
+**This wheel’s look** in the builder opens the same form scoped to that wheel —
+palette, hub, speaker, confetti, backdrop, spin timing, win sound, and the rules
+for gifting, refusing, GM spins, auto-close and the result card.
+
+A blank field means "follow the world setting", and the placeholder tells you
+what that is, so a wheel only carries the handful of things it actually differs
+on. The launcher marks a customised wheel with a ✦.
+
+A Dragon’s Hoard in ember with a coin hub and a nine-second spin; a Cursed Vault
+in midnight that whispers its results to the GM and does not let anyone refuse.
+
 ## Spins are a permission, not a role
 
 The wheel opens for everybody; whether you can *turn* it depends only on whether

@@ -10,7 +10,7 @@
 
 import {MODULE_ID, t} from "./core/constants.js";
 import {getCredits, setSpins} from "./core/ledger.js";
-import {S, registerSettings} from "./core/settings.js";
+import {S, registerSettings, resolveWheelConfig} from "./core/settings.js";
 import {auditTable, buildEntries, describeFault, disperseSlots, SLOT_PRESETS, validateTable} from "./core/wheel-data.js";
 import {callOwner, registerSocket, socketReady} from "./core/socket.js";
 import {cancelWheel, registerSession, requestSpin, resolveWheel, sessions, startSession} from "./core/session.js";
@@ -94,7 +94,9 @@ export async function present({table, allocations} = {}) {
   const seed = Math.floor(Math.random() * 0xFFFFFFFF);
   const layout = disperseSlots(entries, slots, seed);
 
-  return startSession({table: doc, entries, layout});
+  // Resolved here, on the GM, and carried with the session — see
+  // resolveWheelConfig for why it is not read per-client.
+  return startSession({table: doc, entries, layout, wheel: resolveWheelConfig(doc)});
 }
 
 /** Open the wheel builder. GM only. Prompts for a table when none is given. */

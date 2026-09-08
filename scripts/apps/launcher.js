@@ -12,6 +12,7 @@
 
 import {slotCount, validateTable} from "../core/wheel-data.js";
 import {t} from "../core/constants.js";
+import {wheelOverrides} from "../core/settings.js";
 
 /** Players who can actually click a button right now, connected ones first. */
 function candidateUsers() {
@@ -26,7 +27,9 @@ function tableOptions(selected = null) {
     .map(table => {
       const slots = slotCount(table);
       const broken = validateTable(table).length > 0;
-      const label = `${table.name} — ${t("Launcher.NSlots", {n: slots || "?"})}${broken ? " ⚠" : ""}`;
+      // A wheel with a look of its own is worth knowing about before presenting it.
+      const custom = Object.keys(wheelOverrides(table)).length ? " ✦" : "";
+      const label = `${table.name} — ${t("Launcher.NSlots", {n: slots || "?"})}${custom}${broken ? " ⚠" : ""}`;
       return `<option value="${table.uuid}"${table.uuid === selected ? " selected" : ""}>${
         foundry.utils.escapeHTML(label)}</option>`;
     })
