@@ -339,13 +339,54 @@ Hooks.on("renderChatMessageHTML", (message, element) => {
   card.append(button);
 });
 
+/**
+ * Where the sidebar keeps its Create Table / Create Folder buttons.
+ *
+ * Tried in order, because this is core markup rather than the module's own and
+ * it has been reorganised between Foundry versions before. The failure mode if
+ * none of them match is the worst kind: the module loads, registers everything,
+ * and simply has no visible way in — so a miss is reported rather than passed
+ * over in silence, along with the two routes that do not depend on this markup
+ * at all.
+ */
+const DIRECTORY_ACTIONS = [
+  ".header-actions",
+  ".action-buttons",
+  ".directory-header .header-actions",
+  ".directory-header .action-buttons",
+  ".directory-header"
+];
+
+/** Warned once per session, not once per re-render. */
+let warnedAboutSidebar = false;
+
 Hooks.on("renderRollTableDirectory", (app, element) => {
   if (!game.user.isGM) return;
   // v13+ hands over an HTMLElement; older cores hand over a jQuery object.
   const root = element instanceof HTMLElement ? element : element?.[0];
-  const actions = root?.querySelector(".header-actions");
+
+  let actions = null;
+  for (const selector of DIRECTORY_ACTIONS) {
+    actions = root?.querySelector(selector);
+    if (actions) break;
+  }
+
+  if (!actions) {
+    if (!warnedAboutSidebar) {
+      warnedAboutSidebar = true;
+      console.warn(
+        "Wheel of Loot | could not find the RollTables sidebar header, so the "
+        + "sidebar button is missing. Everything still works: open any RollTable "
+        + "and use the wheel button in its header, or call "
+        + "game.modules.get(\"wheel-of-loot\").api.manage() from a macro. "
+        + "Please report this along with your Foundry version."
+      );
+    }
+    return;
+  }
+
   // Re-renders are frequent and would otherwise stack up copies of the button.
-  if (!actions || actions.querySelector(".wol-open")) return;
+  if (actions.querySelector(".wol-open")) return;
 
   const button = document.createElement("button");
   button.type = "button";
