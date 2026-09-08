@@ -3,6 +3,28 @@
 All notable changes to this module are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] — 2026-09-08
+
+### Changed
+
+- **The minimum Foundry version is now 14, not 13.** Nothing about the module
+  changed; the claim did. v13 had never been run, and a compatibility floor
+  nobody has tested is a promise rather than a fact.
+
+  The static evidence for v13 is good and is recorded in `docs/DEVELOPMENT.md`:
+  every API the module uses predates 14, including the two that would have been
+  fatal if they had not — `documentUuid` on TableResult and the
+  `renderChatMessageHTML` hook, both of which exist in 13. So this is expected
+  to come back down once somebody runs it there.
+
+### Fixed
+
+- **The sidebar button could vanish silently on another core version.** The
+  RollTables header is core markup, and it was found by a single selector that
+  returned quietly on a miss — leaving the module loaded, registered, and with
+  no visible way in. Five candidate containers are now tried, and a total miss
+  reports itself and names the two routes that do not depend on that markup.
+
 ## [2.0.0] — 2026-09-08
 
 The first release.

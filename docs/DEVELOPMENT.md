@@ -96,8 +96,16 @@ Secrets are scanned with gitleaks on every push, configured in `.gitleaks.toml`.
 
 `docs/QA-PLAN.md` tracks them. At the time of writing the open ones are all
 things that need a second machine rather than more code: no multi-client test,
-no non-`dnd5e` world has ever loaded the module, and Foundry v13 is declared
-compatible but only v14 has been exercised.
+no non-`dnd5e` world has ever loaded the module, and Foundry v13 has never been
+run.
+
+On v13 specifically the evidence is static rather than empirical, and it is
+good: `documentCollection` on TableResult is deprecated *since 13*, so the
+`documentUuid` the module reads exists there; `renderChatMessage` is likewise
+deprecated since 13, so the `renderChatMessageHTML` hook it uses exists there;
+and ApplicationV2, DialogV2, the `<file-picker>` element and `foundry.utils`
+all predate 13. The manifest still declares 14 as the minimum, because a
+version nobody has run is not a version to promise.
 
 ---
 

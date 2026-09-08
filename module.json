@@ -2,7 +2,7 @@
   "id": "wheel-of-loot",
   "title": "Wheel of Loot",
   "description": "<p>A broadcast prize wheel driven by a Foundry RollTable. The GM presents a wheel to the whole table and nominates who may spin it; every client watches the same wheel land on the same slice. The winner gets confetti and a keep / gift / refuse choice, and keeping it puts the item straight onto their sheet.</p><p><strong>Built for D&amp;D 5e</strong> — rarity colours on the rim, coin wedges that pay into the right purse, and a browser that knows a three-charge wand from a one-use scroll. <strong>Runs in any system</strong>: everything system-specific lives behind one small adapter, and a world with no adapter simply hides the affordances it cannot support instead of showing controls that would do nothing.</p><p><em>The module ships no prizes of its own.</em> A wheel is filled from your own world — your compendiums, your homebrew, or prizes you type in — and the builder exists to make that quick.</p><p>Comes with a wheel builder: browse every Item in your world and compendiums, drag them onto the wheel, choose how many slots it has, and re-roll any wedge you do not like. Prizes that are not items at all — a favour owed, a title, a rumour, homebrew you have not written up — go on as custom wedges. A dry run spins the wheel exactly as your players will see it, granting nothing.</p>",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "authors": [
     {
       "name": "KochiTusker",
@@ -10,7 +10,7 @@
     }
   ],
   "compatibility": {
-    "minimum": "13",
+    "minimum": "14",
     "verified": "14.365"
   },
   "relationships": {

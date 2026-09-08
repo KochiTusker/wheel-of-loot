@@ -121,6 +121,18 @@ reveal card, and in the builder every row's name has the whole thing on hover.
 If you want more room, use fewer slices: the label length and type size adapt to
 whatever size you choose.
 
+## I am on Foundry v13
+
+The manifest declares v14, so Foundry will warn you or refuse to enable it.
+
+It very likely works: every API the module uses existed in v13, and nothing in
+it is v14-only. It simply has never been run there, and declaring a version
+nobody has tested is a promise rather than a fact.
+
+If you try it, [open an issue](https://github.com/KochiTusker/wheel-of-loot/issues)
+either way. One report of it working on a real v13 world is all it takes for the
+minimum to come back down.
+
 ## socketlib
 
 The module will not run without it. It is a hard dependency declared in the

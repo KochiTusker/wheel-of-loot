@@ -13,8 +13,14 @@ on the rim, coin wedges that pay into the right purse, and an item browser that
 can tell a three-charge wand from a one-use scroll. Everything system-specific
 lives behind one small adapter file, so the module runs in any world.
 
-> **Requirements:** Foundry VTT v13 or v14, and
+> **Requirements:** Foundry VTT **v14**, and
 > [socketlib](https://github.com/manuelVo/foundryvtt-socketlib).
+>
+> It should run on **v13** as well: every API it uses existed there, and nothing
+> in it is v14-only. That has never been tested on a real v13 world, though, so
+> v13 is not declared. If you run it on 13, please
+> [say so in an issue](https://github.com/KochiTusker/wheel-of-loot/issues) —
+> working or not — and the minimum will follow the evidence.
 
 > **The module ships no prizes.** It is a wheel, not a loot table. What goes on
 > it comes from your own world — your compendiums, your system's content, your
