@@ -11,7 +11,7 @@
  */
 
 import {MODULE_ID, t} from "../core/constants.js";
-import {PALETTES, S, parseNumberList, parsePalette} from "../core/settings.js";
+import {PALETTES, S, THEMES, parseNumberList, parsePalette} from "../core/settings.js";
 import {MAX_SLOTS, MIN_SLOTS, SLOT_PRESETS, sliceColours} from "../core/wheel-data.js";
 
 const {ApplicationV2} = foundry.applications.api;
@@ -38,7 +38,8 @@ export class WheelSettings extends ApplicationV2 {
       tab: WheelSettings.#onTab,
       save: WheelSettings.#onSave,
       reset: WheelSettings.#onReset,
-      pickFile: WheelSettings.#onPickFile
+      pickFile: WheelSettings.#onPickFile,
+      preview: WheelSettings.#onPreview
     }
   };
 
@@ -116,6 +117,10 @@ export class WheelSettings extends ApplicationV2 {
       </nav>
 
       <section class="wol-set-page" data-tab="appearance">
+        ${select(S.THEME, "Setting.Theme", [
+          ...Object.keys(THEMES).map(k => ({value: k, label: t(`Theme.${k}`)})),
+          {value: "custom", label: t("Theme.custom")}
+        ], "Setting.ThemeHint")}
         ${select(S.PALETTE, "Setting.Palette", [
           ...Object.keys(PALETTES).map(k => ({value: k, label: t(`Palette.${k}`)})),
           {value: "custom", label: t("Palette.custom")}
@@ -127,9 +132,21 @@ export class WheelSettings extends ApplicationV2 {
           <p class="notes">${t("Setting.PaletteCustomHint")}</p>
         </div>
         <div class="wol-set-preview" data-role="preview"></div>
+        <div class="wol-set-row">
+          <button type="button" class="wol-b-ghost" data-action="preview">
+            <i class="fa-solid fa-eye"></i> ${t("Setting.PreviewWheel")}
+          </button>
+          <p class="notes">${t("Setting.PreviewWheelHint")}</p>
+        </div>
         ${text(S.HUB_ICON, "Setting.HubIcon", "Setting.HubIconHint", {picker: "image"})}
         ${text(S.WHEEL_SPEAKER, "Setting.Speaker", "Setting.SpeakerHint", {placeholder: t("Card.Speaker")})}
         ${check(S.CONFETTI, "Setting.Confetti", "Setting.ConfettiHint")}
+        ${number(S.BACKDROP, "Setting.Backdrop", "Setting.BackdropHint", {min: 0, max: 1, step: 0.05})}
+        ${select(S.REDUCE_MOTION, "Setting.ReduceMotion", [
+          {value: "auto", label: t("Motion.auto")},
+          {value: "always", label: t("Motion.always")},
+          {value: "never", label: t("Motion.never")}
+        ], "Setting.ReduceMotionHint")}
       </section>
 
       <section class="wol-set-page" data-tab="spin" hidden>
@@ -184,9 +201,37 @@ export class WheelSettings extends ApplicationV2 {
       this.#renderCoinPreview(content);
       this.#syncCustomRow(content);
     };
+
+    content.addEventListener("change", ev => {
+      const theme = ev.target.closest(`[name="${S.THEME}"]`);
+      if (theme && theme.value !== "custom") this.#applyTheme(content, theme.value);
+      // Touching a part the theme owns means the GM has diverged from it.
+      else if (ev.target.matches(`[name="${S.PALETTE}"], [name="${S.HUB_ICON}"], [name="${S.PALETTE_CUSTOM}"]`)) {
+        const select = content.querySelector(`[name="${S.THEME}"]`);
+        if (select && !this.applyingTheme) select.value = "custom";
+      }
+      refresh();
+    });
     content.addEventListener("input", refresh);
-    content.addEventListener("change", refresh);
     refresh();
+  }
+
+  /**
+   * Fill in the parts a theme stands for.
+   *
+   * The theme is a shortcut, not a layer: it writes the palette and hub and then
+   * gets out of the way, so there is only ever one answer to "what colour is
+   * this wheel" and it is the one in the palette setting.
+   */
+  #applyTheme(content, key) {
+    const theme = THEMES[key];
+    if (!theme) return;
+    this.applyingTheme = true;
+    const palette = content.querySelector(`[name="${S.PALETTE}"]`);
+    const hub = content.querySelector(`[name="${S.HUB_ICON}"]`);
+    if (palette) palette.value = theme.palette;
+    if (hub) hub.value = theme.hub;
+    this.applyingTheme = false;
   }
 
   /** The custom hex field is only meaningful when "Custom" is chosen. */
@@ -258,6 +303,39 @@ export class WheelSettings extends ApplicationV2 {
         field.dispatchEvent(new Event("change", {bubbles: true}));
       }
     }).render(true);
+  }
+
+  /**
+   * Put a real wheel on screen with the settings as they stand in the form.
+   *
+   * Swatches answer "what are these colours"; only a wheel answers "does this
+   * look right". Local to this client and dismissed on click, so it can be
+   * fired while players are connected without anyone else seeing it.
+   */
+  static async #onPreview(event, target) {
+    const {LootWheel} = await import("./wheel-app.js");
+    const {colours} = this.#livePalette(this.element);
+    const hub = this.element.querySelector(`[name="${S.HUB_ICON}"]`)?.value || "icons/svg/chest.svg";
+
+    const names = [
+      t("Setting.SampleGrand"), t("Setting.SampleCommon"), t("Setting.SampleCoin"),
+      t("Setting.SampleRare"), t("Setting.SampleNothing")
+    ];
+    const inks = ["#b26a00", "#3f3f46", "#7a5c00", "#1155cc", "#a3341f"];
+    const counts = [2, 8, 5, 3, 6];
+    const entries = names.map((name, i) => ({
+      name, count: counts[i], ink: inks[i], img: hub,
+      rarity: null, isCoin: false, description: "", uuid: null, odds: 100
+    }));
+
+    const {disperseSlots} = await import("../core/wheel-data.js");
+    const total = counts.reduce((a, b) => a + b, 0);
+    const layout = disperseSlots(entries, total, 1234);
+
+    LootWheel.preview({
+      tableName: t("Setting.PreviewTitle"),
+      entries, layout, palette: colours, hubIcon: hub
+    });
   }
 
   static async #onSave(event, target) {

@@ -24,11 +24,14 @@ import {MODULE_ID} from "./constants.js";
 
 export const S = {
   // Appearance
+  THEME: "theme",
   PALETTE: "palette",
   PALETTE_CUSTOM: "paletteCustom",
   HUB_ICON: "hubIcon",
   WHEEL_SPEAKER: "wheelSpeaker",
   CONFETTI: "confetti",
+  BACKDROP: "backdrop",
+  REDUCE_MOTION: "reduceMotion",
 
   // Spin
   SPIN_SECONDS: "spinSeconds",
@@ -72,6 +75,26 @@ export const PALETTES = {
   ember: ["#7A1F1F", "#C1440E", "#E8A33D", "#2B1B12"],
   parchment: ["#EFE3C8", "#C8B48A", "#8A6E4B", "#3F2F20"],
   monochrome: ["#1C1C1C", "#E8E8E8", "#4A4A4A", "#B0B0B0"]
+};
+
+/**
+ * A theme is a whole look in one choice.
+ *
+ * Asking a GM to art-direct a wheel from six hex codes is asking the wrong
+ * question — most people want a vibe, not a colour picker. Each of these sets
+ * the palette and the hub together; anything a GM changes afterwards simply
+ * wins, because the individual settings are what the wheel actually reads.
+ *
+ * Hub art is Foundry's own bundled icon set (game-icons.net, CC BY 3.0), so the
+ * module ships no image files of its own and every path resolves in any install.
+ */
+export const THEMES = {
+  fairground: {palette: "fairground", hub: "icons/svg/chest.svg"},
+  hoard:      {palette: "ember",      hub: "icons/svg/coins.svg"},
+  fae:        {palette: "verdant",    hub: "icons/svg/oak.svg"},
+  grimdark:   {palette: "midnight",   hub: "icons/svg/skull.svg"},
+  clockwork:  {palette: "monochrome", hub: "icons/svg/clockwork.svg"},
+  chapel:     {palette: "parchment",  hub: "icons/svg/holy-shield.svg"}
 };
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -155,6 +178,38 @@ export function wheelSpeaker() {
 
 export function confettiEnabled() {
   return read(S.CONFETTI, true) !== false;
+}
+
+/**
+ * How much of the scene behind the wheel stays visible, 0-1.
+ *
+ * The wheel sits over whatever is on the canvas, and that scene is the table's
+ * backdrop already — a ship's deck, a vault, a forest clearing. Dimming it to
+ * near-black throws that away, so how far to dim is the GM's call. 0 shows the
+ * scene untouched; 1 is the near-opaque original.
+ */
+export function backdrop() {
+  const v = Number(read(S.BACKDROP, 0.82));
+  return Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0.82));
+}
+
+/**
+ * Whether to skip the spin animation.
+ *
+ * Honours the viewer's own operating-system preference unless the setting
+ * overrides it: a six-second rotation of a large object is exactly the kind of
+ * motion `prefers-reduced-motion` exists for, and a player who has asked their
+ * machine for less of it should not have to ask again here.
+ */
+export function reduceMotion() {
+  const choice = read(S.REDUCE_MOTION, "auto");
+  if (choice === "always") return true;
+  if (choice === "never") return false;
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
 }
 
 /** How long the wheel takes to settle, in milliseconds. */
@@ -256,6 +311,16 @@ export function registerSettings(MenuApplication, slotPresets) {
   });
 
   /* Appearance */
+  register(S.THEME, {
+    name: "WHEELOFLOOT.Setting.Theme",
+    hint: "WHEELOFLOOT.Setting.ThemeHint",
+    type: String,
+    default: "fairground",
+    choices: {
+      ...Object.fromEntries(Object.keys(THEMES).map(k => [k, `WHEELOFLOOT.Theme.${k}`])),
+      custom: "WHEELOFLOOT.Theme.custom"
+    }
+  });
   register(S.PALETTE, {
     name: "WHEELOFLOOT.Setting.Palette",
     hint: "WHEELOFLOOT.Setting.PaletteHint",
@@ -270,6 +335,8 @@ export function registerSettings(MenuApplication, slotPresets) {
   register(S.HUB_ICON, {type: String, default: "icons/svg/chest.svg"});
   register(S.WHEEL_SPEAKER, {type: String, default: ""});
   register(S.CONFETTI, {type: Boolean, default: true});
+  register(S.BACKDROP, {type: Number, default: 0.82});
+  register(S.REDUCE_MOTION, {type: String, default: "auto"});
 
   /* Spin */
   register(S.SPIN_SECONDS, {

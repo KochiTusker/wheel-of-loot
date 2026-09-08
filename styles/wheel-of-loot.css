@@ -6,8 +6,12 @@
   z-index: 100000;
   display: grid;
   place-items: center;
-  background: radial-gradient(ellipse at center, rgba(18, 14, 10, 0.82) 0%, rgba(6, 5, 4, 0.95) 70%);
-  backdrop-filter: blur(6px);
+  /* --wol-dim is set per render from the backdrop setting, so the scene on the
+     canvas can read through as much as the GM wants. */
+  background: radial-gradient(ellipse at center,
+    rgba(18, 14, 10, calc(var(--wol-dim, 0.82) * 1)) 0%,
+    rgba(6, 5, 4, calc(var(--wol-dim, 0.82) * 1.16)) 70%);
+  backdrop-filter: blur(var(--wol-blur, 6px));
   animation: wol-fade 260ms ease-out;
   font-family: var(--font-primary, "Signika", sans-serif);
 }
@@ -66,8 +70,10 @@
 
 .wol-wheelbox {
   position: relative;
-  width: min(78vh, 900px);
-  height: min(78vh, 900px);
+  /* Bounded by the narrow axis as well as the tall one: sizing on height alone
+     let the wheel push the title off the top of a short or narrow window. */
+  width: min(72vh, 88vw, 900px);
+  height: min(72vh, 88vw, 900px);
   flex: 0 0 auto;
 }
 
@@ -1043,4 +1049,27 @@
 .wol-b-tally .weighted {
   color: #c48b1f;
   font-size: 0.82rem;
+}
+
+/* ---- Settings preview wheel ---- */
+
+/* A preview is the GM checking a look, not a ceremony — so it says so, and it
+   never carries the affordances of a live wheel. */
+.wol-overlay.wol-preview .wol-head h1::after {
+  content: "";
+}
+
+.wol-overlay.wol-preview .wol-sub em {
+  color: #f2c14e;
+  font-style: normal;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+
+/* Respect the viewer's own motion preference even if the module setting is on
+   "auto" and something re-enables the transition. */
+@media (prefers-reduced-motion: reduce) {
+  .wol-overlay { animation: none; }
+  .wol-reveal-card { animation: none; }
 }

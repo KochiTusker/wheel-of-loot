@@ -15,8 +15,8 @@ import {burst} from "../lib/confetti.js";
 import {labelBudget, labelFontSize, sliceColours} from "../core/wheel-data.js";
 import {MODULE_ID, t} from "../core/constants.js";
 import {
-  S, allowGift, allowRefuse, confettiEnabled, gmNeedsCredit, hubIcon,
-  palette, spinTurns, tickVolume, ticksEnabled, winSound
+  S, allowGift, allowRefuse, backdrop, confettiEnabled, gmNeedsCredit, hubIcon,
+  palette, reduceMotion, spinTurns, tickVolume, ticksEnabled, winSound
 } from "../core/settings.js";
 import {systemAdapter} from "../systems/adapter.js";
 
@@ -198,6 +198,22 @@ export class LootWheel {
     return wheel;
   }
 
+  /**
+   * Show a wheel to this client only, with a supplied look.
+   *
+   * Deliberately not a session: nothing is broadcast, no credit is spent, and
+   * the spin button is replaced by a dismiss. It exists so a GM can answer
+   * "does this actually look right" without putting a half-chosen theme on
+   * five other screens.
+   */
+  static preview(config) {
+    LootWheel.current?.destroy();
+    const wheel = new LootWheel({...config, sessionId: "__preview__", preview: true});
+    LootWheel.current = wheel;
+    wheel.render();
+    return wheel;
+  }
+
   static spinTo(payload) {
     const wheel = LootWheel.current;
     if (!wheel || wheel.config.sessionId !== payload.sessionId) return;
@@ -250,6 +266,11 @@ export class LootWheel {
   render() {
     const root = document.createElement("div");
     root.className = "wol-overlay";
+    if (this.config.preview) root.classList.add("wol-preview");
+    // Drives the backdrop gradient, so the canvas can show through as much or
+    // as little as the GM wants.
+    root.style.setProperty("--wol-dim", String(backdrop()));
+    root.style.setProperty("--wol-blur", backdrop() < 0.3 ? "0px" : "6px");
     root.innerHTML = `
       <canvas class="wol-confetti"></canvas>
       <div class="wol-stage">
@@ -260,7 +281,7 @@ export class LootWheel {
         <div class="wol-wheelbox">
           ${this.#wheelSvg()}
           <div class="wol-pointer" aria-hidden="true"></div>
-          <div class="wol-hub"><img alt="" src="${foundry.utils.escapeHTML(hubIcon())}"></div>
+          <div class="wol-hub"><img alt="" src="${foundry.utils.escapeHTML(this.config.hubIcon ?? hubIcon())}"></div>
         </div>
         <footer class="wol-actions"></footer>
       </div>
@@ -287,7 +308,7 @@ export class LootWheel {
     const outer = 430;
     const inner = 118;
     const sweep = 360 / total;
-    const backgrounds = sliceColours(total, palette());
+    const backgrounds = sliceColours(total, this.config.palette ?? palette());
     const budget = labelBudget(total);
     const fontSize = labelFontSize(total);
 
@@ -337,6 +358,7 @@ export class LootWheel {
   #renderSub() {
     const sub = this.root.querySelector("[data-role=sub]");
     if (!sub) return;
+    if (this.config.preview) return;
 
     if (this.state !== "idle") {
       sub.innerHTML = t("Wheel.SpinsFor", {
@@ -363,6 +385,18 @@ export class LootWheel {
     this.#renderSub();
     const footer = this.root.querySelector(".wol-actions");
     footer.innerHTML = "";
+
+    if (this.config.preview) {
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "wol-btn wol-btn-ghost";
+      close.innerHTML = `<i class="fa-solid fa-xmark"></i> ${t("Setting.ClosePreview")}`;
+      close.addEventListener("click", () => this.destroy(), {once: true});
+      footer.append(close);
+      const sub = this.root.querySelector("[data-role=sub]");
+      if (sub) sub.innerHTML = `<em>${t("Setting.PreviewNote")}</em>`;
+      return;
+    }
 
     if (this.state === "idle") {
       const mine = myCredits();
@@ -444,6 +478,16 @@ export class LootWheel {
     if (advance < 0) advance += 360;
     const final = this.rotation + (360 * spinTurns()) + advance;
     this.rotation = final;
+
+    // A six-second rotation of a large object is exactly what reduced-motion
+    // preferences exist for. Skip straight to the result, but keep a beat so it
+    // still reads as an outcome rather than a glitch.
+    if (reduceMotion()) {
+      rotor.style.transition = "none";
+      rotor.style.transform = `rotate(${final.toFixed(3)}deg)`;
+      window.setTimeout(() => this.#onLanded(), 400);
+      return;
+    }
 
     this.stopTicks = tickTrack(this.duration);
 
