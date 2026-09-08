@@ -16,6 +16,12 @@ lives behind one small adapter file, so the module runs in any world.
 > **Requirements:** Foundry VTT v13 or v14, and
 > [socketlib](https://github.com/manuelVo/foundryvtt-socketlib).
 
+> **The module ships no prizes.** It is a wheel, not a loot table. What goes on
+> it comes from your own world — your compendiums, your system's content, your
+> homebrew, or prizes you type in yourself — and the builder is there to make
+> assembling that quick. The screenshots on this page use the author's own
+> D&D 5e world as an example; none of that content is included.
+
 ---
 
 ## Winning something

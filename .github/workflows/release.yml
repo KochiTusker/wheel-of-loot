@@ -74,6 +74,23 @@ jobs:
             console.log(`stamped ${m.id} ${m.version}`);
           '
 
+      # A tag whose changelog still says "Unreleased" ships a release nobody can
+      # read the notes for. Cheap to check, easy to forget.
+      - name: Fail if the changelog has no section for this version
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const log = fs.readFileSync("CHANGELOG.md", "utf8");
+            const heading = `## [${process.env.VERSION}]`;
+            if (!log.includes(heading)) {
+              console.error(`CHANGELOG.md has no "${heading}" section`);
+              process.exit(1);
+            }
+            console.log(`changelog documents ${process.env.VERSION}`);
+          '
+
       - name: Fail if the manifest disagrees with the tag
         env:
           VERSION: ${{ steps.version.outputs.value }}

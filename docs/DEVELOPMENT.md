@@ -58,8 +58,8 @@ node tools/shoot.mjs
 
 It drives a headless Chrome over the DevTools protocol — no automation library,
 because the repository has no dependencies and this was not a good enough reason
-to start one. It needs a Foundry world already running with a **password-less
-GM** to sign in as, and at least one wheel to photograph.
+to start one. It needs a Foundry world already running and at least one wheel to
+photograph.
 
 ```bash
 node tools/shoot.mjs --url http://localhost:30000 --user Claude --out docs/images
@@ -67,6 +67,19 @@ node tools/shoot.mjs --url http://localhost:30000 --user Claude --out docs/image
 
 It only ever opens windows on its own client. Nothing is presented, broadcast,
 granted or saved.
+
+### The tooling account
+
+The script signs in as a real Foundry user, so one has to exist for it to sign in
+*as*. The convention here — and for anything else that needs to drive a live
+game, a browser agent included — is a **GM named `Claude` with no password**,
+created in the world's User Configuration.
+
+**Only on a server nobody else can reach.** A password-less GM is exactly what it
+sounds like: anyone who can open the Foundry page becomes a GM. That is fine on
+`localhost` or a LAN game you control. It is not fine on an instance exposed to
+the internet, and it is worth deleting the account or giving it a password before
+you open the server up.
 
 ## Security
 
