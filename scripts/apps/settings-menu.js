@@ -38,7 +38,7 @@ export class WheelSettings extends ApplicationV2 {
     },
     position: {width: 620, height: 640},
     actions: {
-      tab: WheelSettings.#onTab,
+      switchTab: WheelSettings.#onTab,
       save: WheelSettings.#onSave,
       reset: WheelSettings.#onReset,
       pickFile: WheelSettings.#onPickFile,
@@ -176,7 +176,7 @@ export class WheelSettings extends ApplicationV2 {
     root.innerHTML = `
       <nav class="wol-set-tabs">
         ${TABS.filter(tab => !(this.scoped && tab === "builder"))
-          .map(tab => `<button type="button" data-action="tab" data-tab="${tab}"
+          .map(tab => `<button type="button" data-action="switchTab" data-tab="${tab}"
             class="${tab === this.tab ? "active" : ""}">${t(`Setting.Tab.${tab}`)}</button>`).join("")}
       </nav>
 
@@ -344,6 +344,15 @@ export class WheelSettings extends ApplicationV2 {
   /*  Actions                                 */
   /* ---------------------------------------- */
 
+  /**
+   * Switch pane.
+   *
+   * The action is called `switchTab` rather than `tab` because ApplicationV2
+   * reserves `tab`: its click dispatcher intercepts that name in a switch and
+   * routes it to its own `_onClickTab`, which drives the framework tab-group
+   * machinery, before it ever consults `options.actions`. A handler registered
+   * under `tab` is therefore never called, and the panes silently do nothing.
+   */
   static #onTab(event, target) {
     this.tab = target.dataset.tab;
     const root = this.element;

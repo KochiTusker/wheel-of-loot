@@ -40,6 +40,10 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The Spin and Rules tabs in the settings did nothing. `tab` is a reserved
+  action name in ApplicationV2 — its dispatcher intercepts it and routes to the
+  framework tab machinery before consulting the module’s own actions, so the
+  handler was never called.
 - The wheel sized on viewport height alone, so a short or narrow window pushed
   the title off the top.
 
