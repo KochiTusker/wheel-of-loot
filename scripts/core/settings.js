@@ -383,6 +383,29 @@ export async function saveWheelOverrides(table, overrides) {
   return table.setFlag(MODULE_ID, "overrides", clean);
 }
 
+/**
+ * Localisation key stem for a setting.
+ *
+ * Derived from the setting key rather than written out at each registration, so
+ * a setting cannot be added without its name and hint existing — the i18n
+ * coverage check then fails loudly instead of Foundry showing a raw key.
+ */
+const LABELS = {
+  [S.THEME]: "Theme", [S.PALETTE]: "Palette", [S.PALETTE_CUSTOM]: "PaletteCustom",
+  [S.HUB_ICON]: "HubIcon", [S.WHEEL_SPEAKER]: "Speaker", [S.CONFETTI]: "Confetti",
+  [S.BACKDROP]: "Backdrop", [S.REDUCE_MOTION]: "ReduceMotion",
+  [S.SPIN_SECONDS]: "SpinSeconds", [S.SPIN_TURNS]: "SpinTurns",
+  [S.TICK_SOUND]: "TickSound", [S.TICK_VOLUME]: "TickVolume", [S.WIN_SOUND]: "WinSound",
+  [S.ALLOW_GIFT]: "AllowGift", [S.ALLOW_REFUSE]: "AllowRefuse",
+  [S.GM_NEEDS_CREDIT]: "GMNeedsCredit", [S.AUTO_CLOSE]: "AutoClose", [S.CHAT_CARD]: "ChatCard",
+  [S.DEFAULT_SLOTS]: "DefaultSlots", [S.COIN_PRESETS]: "CoinPresets",
+  [S.COIN_DENOMINATION]: "CoinDenomination"
+};
+
+function label(key) {
+  return LABELS[key] ?? key;
+}
+
 /* -------------------------------------------- */
 /*  Registration                                */
 /* -------------------------------------------- */
@@ -398,8 +421,17 @@ export async function saveWheelOverrides(table, overrides) {
  * @param {number[]} slotPresets      Offered wheel sizes.
  */
 export function registerSettings(MenuApplication, slotPresets) {
+  // Everything a GM might reasonably want to change is `config: true`, so it can
+  // be found by scrolling the module's section of Game Settings without knowing
+  // the grouped form exists. The form is still the nicer way in — it has the
+  // live palette preview, the wheel preview, and it is the same UI used for
+  // per-wheel overrides — but nothing is *only* reachable there.
+  //
+  // Registration order is display order, so these read Appearance, Spin, Rules,
+  // Builder, matching the form's tabs.
   const register = (key, data) => game.settings.register(MODULE_ID, key, {
-    scope: "world", config: false, ...data
+    scope: "world", config: true, name: `WHEELOFLOOT.Setting.${label(key)}`,
+    hint: `WHEELOFLOOT.Setting.${label(key)}Hint`, ...data
   });
 
   game.settings.registerMenu(MODULE_ID, "configure", {
@@ -411,10 +443,9 @@ export function registerSettings(MenuApplication, slotPresets) {
     restricted: true
   });
 
-  /* Appearance */
+  /* -------- Appearance -------- */
+
   register(S.THEME, {
-    name: "WHEELOFLOOT.Setting.Theme",
-    hint: "WHEELOFLOOT.Setting.ThemeHint",
     type: String,
     default: "fairground",
     choices: {
@@ -423,8 +454,6 @@ export function registerSettings(MenuApplication, slotPresets) {
     }
   });
   register(S.PALETTE, {
-    name: "WHEELOFLOOT.Setting.Palette",
-    hint: "WHEELOFLOOT.Setting.PaletteHint",
     type: String,
     default: "fairground",
     choices: {
@@ -433,48 +462,53 @@ export function registerSettings(MenuApplication, slotPresets) {
     }
   });
   register(S.PALETTE_CUSTOM, {type: String, default: ""});
-  register(S.HUB_ICON, {type: String, default: "icons/svg/chest.svg"});
+  // filePicker gives the native browse button rather than a bare path field.
+  register(S.HUB_ICON, {type: String, default: "icons/svg/chest.svg", filePicker: "image"});
   register(S.WHEEL_SPEAKER, {type: String, default: ""});
   register(S.CONFETTI, {type: Boolean, default: true});
-  register(S.BACKDROP, {type: Number, default: 0.82});
-  register(S.REDUCE_MOTION, {type: String, default: "auto"});
-
-  /* Spin */
-  register(S.SPIN_SECONDS, {
-    name: "WHEELOFLOOT.Setting.SpinSeconds",
-    hint: "WHEELOFLOOT.Setting.SpinSecondsHint",
-    config: true,
-    type: Number,
-    range: {min: 2, max: 20, step: 0.5},
-    default: 6
+  register(S.BACKDROP, {type: Number, range: {min: 0, max: 1, step: 0.05}, default: 0.82});
+  register(S.REDUCE_MOTION, {
+    type: String,
+    default: "auto",
+    choices: {
+      auto: "WHEELOFLOOT.Motion.auto",
+      always: "WHEELOFLOOT.Motion.always",
+      never: "WHEELOFLOOT.Motion.never"
+    }
   });
-  register(S.SPIN_TURNS, {type: Number, default: 6});
+
+  /* -------- Spin -------- */
+
+  register(S.SPIN_SECONDS, {type: Number, range: {min: 2, max: 20, step: 0.5}, default: 6});
+  register(S.SPIN_TURNS, {type: Number, range: {min: 1, max: 20, step: 1}, default: 6});
 
   // Client scope: whether you want the ticks is a matter of taste, and one
   // player muting them should not mute the table.
-  register(S.TICK_SOUND, {
-    name: "WHEELOFLOOT.Setting.TickSound",
-    hint: "WHEELOFLOOT.Setting.TickSoundHint",
-    scope: "client",
-    config: true,
-    type: Boolean,
-    default: true
+  register(S.TICK_SOUND, {scope: "client", type: Boolean, default: true});
+  register(S.TICK_VOLUME, {
+    scope: "client", type: Number, range: {min: 0, max: 1, step: 0.05}, default: 0.35
   });
-  register(S.TICK_VOLUME, {scope: "client", type: Number, default: 0.35});
-  register(S.WIN_SOUND, {type: String, default: ""});
+  register(S.WIN_SOUND, {type: String, default: "", filePicker: "audio"});
 
-  /* Rules */
+  /* -------- Rules -------- */
+
   register(S.ALLOW_GIFT, {type: Boolean, default: true});
   register(S.ALLOW_REFUSE, {type: Boolean, default: true});
   register(S.GM_NEEDS_CREDIT, {type: Boolean, default: false});
   register(S.AUTO_CLOSE, {type: Boolean, default: true});
-  register(S.CHAT_CARD, {type: String, default: "public"});
+  register(S.CHAT_CARD, {
+    type: String,
+    default: "public",
+    choices: {
+      public: "WHEELOFLOOT.ChatCard.public",
+      gm: "WHEELOFLOOT.ChatCard.gm",
+      none: "WHEELOFLOOT.ChatCard.none"
+    }
+  });
 
-  /* Builder */
+  /* -------- Builder -------- */
+
   register(S.DEFAULT_SLOTS, {
-    name: "WHEELOFLOOT.Setting.DefaultSlots",
-    hint: "WHEELOFLOOT.Setting.DefaultSlotsHint",
-    config: true,
     type: Number,
     choices: Object.fromEntries(slotPresets.map(n => [n, `${n}`])),
     default: 64
@@ -482,8 +516,13 @@ export function registerSettings(MenuApplication, slotPresets) {
   register(S.COIN_PRESETS, {type: String, default: "10, 25, 50, 100, 250, 500, 1000"});
   register(S.COIN_DENOMINATION, {type: String, default: "gp"});
 
-  /* Internal */
-  register(S.CREDITS, {type: Object, default: {}});
-  register(S.LAST_GRANT, {type: Object, default: {}});
-  register(S.MIGRATED, {type: String, default: ""});
+  /* -------- Internal -------- */
+
+  // Live game state and bookkeeping, not preferences. Never shown.
+  const hidden = (key, data) => game.settings.register(MODULE_ID, key, {
+    scope: "world", config: false, ...data
+  });
+  hidden(S.CREDITS, {type: Object, default: {}});
+  hidden(S.LAST_GRANT, {type: Object, default: {}});
+  hidden(S.MIGRATED, {type: String, default: ""});
 }

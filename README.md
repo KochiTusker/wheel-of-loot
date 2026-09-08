@@ -149,28 +149,38 @@ wheel.getCredits();                         // { userId: spinsRemaining }
 
 ## Settings
 
-Spin duration, default wheel size and the tick sound sit directly in Foundry's
-module settings. Everything else lives behind **Configure the wheel**, grouped
-into four tabs.
+**Every setting is in Foundry's own module settings** — open Game Settings,
+Configure Settings, and scroll to Wheel of Loot. Sliders, dropdowns and file
+pickers, nothing hidden behind a sub-menu.
 
-| | Setting | Default |
-| --- | --- | --- |
-| **Appearance** | Slice colours — six themes or your own hex list, with a live preview | Fairground |
-| | Hub image | `icons/svg/chest.svg` |
-| | Chat card speaker | "The Wheel" |
-| | Confetti on a win | on |
-| **Spin** | Duration | 6s |
-| | Full rotations | 6 |
-| | Tick volume *(per client)* | 0.35 |
-| | Win sound | none |
-| **Rules** | Allow gifting | on |
-| | Allow refusing | on |
-| | The GM needs a spin too | off |
-| | Close when the spins run out | on |
-| | Result card — everyone / GM only / none | everyone |
-| **Builder** | Default wheel size | 64 |
-| | Coin amounts | 10 … 1000 |
-| | Coin denomination | `gp` |
+**Configure the wheel** at the top of that section opens the same settings
+grouped into four tabs, with a live palette preview and a **Preview this wheel**
+button. It is the nicer way in, but it is not the only way in — and it is the
+same form used for per-wheel overrides.
+
+| | Setting | Control | Default |
+| --- | --- | --- | --- |
+| **Appearance** | Theme — six looks, each setting palette and hub together | select | Fairground |
+|  | Slice colours | select | Fairground |
+|  | Custom colours — your own hex list | text | — |
+|  | Hub image | file picker | `icons/svg/chest.svg` |
+|  | Chat card speaker | text | The Wheel |
+|  | Confetti on a win | checkbox | on |
+|  | Dim the scene behind | slider 0–1 | 0.82 |
+|  | Reduced motion | select | follow each viewer |
+| **Spin** | Duration | slider 2–20s | 6s |
+|  | Full rotations | slider 1–20 | 6 |
+|  | Fairground tick sound *(per client)* | checkbox | on |
+|  | Tick volume *(per client)* | slider 0–1 | 0.35 |
+|  | Win sound | file picker | none |
+| **Rules** | Allow gifting | checkbox | on |
+|  | Allow refusing | checkbox | on |
+|  | The GM needs a spin too | checkbox | off |
+|  | Close when the spins run out | checkbox | on |
+|  | Result card — everyone / GM only / none | select | everyone |
+| **Builder** | Default wheel size | select | 64 |
+|  | Coin amounts | text | 10 … 1000 |
+|  | Coin denomination | text | `gp` |
 
 **Every default reproduces the module's pre-2.0 behaviour exactly**, so upgrading
 changes nothing until you change something. That promise is pinned by a test.

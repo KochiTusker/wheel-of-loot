@@ -29,6 +29,13 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   movement. The last tenth of the spin covers about a fifth of a slice, so the
   pointer visibly crawls toward the boundary — one continuous motion, because a
   wheel that moves again after stopping looks adjusted.
+- **Every setting is now in Foundry’s module settings list.** Three of twenty-one
+  used to be; the rest were only reachable through the grouped form. They render
+  as native controls — sliders for the timings and the backdrop, dropdowns for
+  the theme, palette, motion, result card and wheel size, and file pickers with
+  browse buttons for the hub image and win sound. The grouped form remains, with
+  the palette preview and the wheel preview, and is still what per-wheel
+  overrides use.
 - **Per-wheel appearance and rules.** Any wheel can override the world settings:
   its own palette, hub, speaker, confetti, backdrop, spin duration and rotations,
   win sound, and its own rules for gifting, refusing, whether the GM needs a

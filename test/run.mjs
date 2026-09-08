@@ -12,6 +12,8 @@
 
 // Installs the Foundry globals the pure modules touch. Imports hoist, so this
 // has to come first.
+import fs from "node:fs";
+
 import {installSettingsStub, installWorldStub} from "./harness.mjs";
 
 import {
@@ -34,7 +36,7 @@ import {
   pickEntry, slicesOf, totalWeight, trueChances
 } from "../scripts/core/odds.js";
 import {
-  PALETTES, allowGift, allowRefuse, autoClose, chatCardMode, coinDenomination, coinPresets,
+  OVERRIDABLE, PALETTES, allowGift, allowRefuse, autoClose, chatCardMode, coinDenomination, coinPresets,
   confettiEnabled, defaultSlots, gmNeedsCredit, hubIcon, palette, parseNumberList, parsePalette,
   registerSettings, spinDuration, spinTurns, tickVolume, ticksEnabled, winSound
 } from "../scripts/core/settings.js";
@@ -830,6 +832,90 @@ check("a new world item is folded into the duplicate grouping", async () => {
   assert(rows.every(r => r.variants === 2), "each knows it has a twin");
   // Different books, so neither is a redundant copy of the other.
   assert(rows.every(r => !r.redundant), "a homebrew copy is not a duplicate of the SRD one");
+});
+
+
+/* -------------------------------------------- */
+/*  Registered settings                          */
+/* -------------------------------------------- */
+
+/** Register into a recording stub and hand back every definition. */
+function registeredSettings() {
+  const store = new Map();
+  const menus = [];
+  const {definitions} = installSettingsStub(store, menus);
+  registerSettings(function FakeMenu() {}, SLOT_PRESETS);
+  return {definitions, menus, store};
+}
+
+const LANG = JSON.parse(fs.readFileSync(new URL("../lang/en.json", import.meta.url), "utf8"));
+
+check("every visible setting has a name and a hint", () => {
+  const {definitions} = registeredSettings();
+  const shown = [...definitions.entries()].filter(([, d]) => d.config !== false);
+  assert(shown.length >= 20, `expected the settings list to be substantial, got ${shown.length}`);
+
+  const missing = [];
+  for (const [key, d] of shown) {
+    // A registration whose name key does not exist shows the raw key in
+    // Foundry's settings list, which looks like a bug to the person reading it.
+    if (!d.name || !(d.name in LANG)) missing.push(`${key}: name (${d.name})`);
+    if (!d.hint || !(d.hint in LANG)) missing.push(`${key}: hint (${d.hint})`);
+  }
+  eq(missing, [], "every visible setting is fully localised");
+});
+
+check("every choice offered by a setting is localised", () => {
+  const {definitions} = registeredSettings();
+  const missing = [];
+  for (const [key, d] of definitions) {
+    if (!d.choices) continue;
+    for (const value of Object.values(d.choices)) {
+      // Numeric choices (the wheel sizes) are literal labels, not keys.
+      if (!String(value).startsWith("WHEELOFLOOT.")) continue;
+      if (!(value in LANG)) missing.push(`${key}: ${value}`);
+    }
+  }
+  eq(missing, [], "every choice label resolves");
+});
+
+check("live game state is never offered as a preference", () => {
+  const {definitions} = registeredSettings();
+  // The ledger, the undo record and the migration marker are bookkeeping. A GM
+  // editing them by hand in the settings list could confiscate a spin or make
+  // the undo point at a document that no longer matches.
+  for (const key of ["spinCredits", "lastGrant", "migratedFrom"]) {
+    const d = definitions.get(key);
+    assert(d, `${key} should still be registered`);
+    eq(d.config, false, `${key} must stay hidden`);
+  }
+});
+
+check("the settings menu is registered and restricted to GMs", () => {
+  const {menus} = registeredSettings();
+  eq(menus.length, 1, "one menu");
+  eq(menus[0].restricted, true, "GM only");
+  for (const field of ["name", "label", "hint"]) {
+    assert(menus[0][field] in LANG, `menu ${field} is localised`);
+  }
+});
+
+check("numeric settings that take a range declare a sane one", () => {
+  const {definitions} = registeredSettings();
+  for (const [key, d] of definitions) {
+    if (d.type !== Number || !d.range) continue;
+    const {min, max, step} = d.range;
+    assert(min < max, `${key}: min below max`);
+    assert(step > 0, `${key}: positive step`);
+    assert(d.default >= min && d.default <= max, `${key}: default ${d.default} inside [${min}, ${max}]`);
+  }
+});
+
+check("every overridable setting is actually registered", () => {
+  const {definitions} = registeredSettings();
+  const unregistered = OVERRIDABLE.filter(key => !definitions.has(key));
+  // A wheel cannot override something the world never declared.
+  eq(unregistered, [], "no overridable key is missing a registration");
 });
 
 /* -------------------------------------------- */
