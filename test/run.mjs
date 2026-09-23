@@ -31,7 +31,7 @@ import {
 import {distributeSlots, drawDistinct, planWheel, rarityWeight} from "../scripts/core/wheel-plan.js";
 import {GENERIC_ADAPTER} from "../scripts/systems/adapter.js";
 import {describeUses} from "../scripts/core/uses.js";
-import {DND5E_ADAPTER, registerDnd5e} from "../scripts/systems/dnd5e.js";
+import {DND5E_ADAPTER, registerDnd5e, usesFromText} from "../scripts/systems/dnd5e.js";
 import {
   buildCatalogue, cachedCatalogue, catalogueRow, invalidateCatalogue,
   isWorldItem, removeWorldItem, upsertWorldItem
@@ -1550,6 +1550,77 @@ check("dnd5e reads a pack last saved under dnd5e 2.x or 3.x", () => {
     "consumableType was the old subtype field");
   eq(a.subtypeOf({system: {weaponType: "martialM"}}), "martialM");
   eq(a.subtypeOf({system: {armor: {type: "heavy"}}}), "heavy");
+  eq(a.priceOf({system: {price: {value: 7, denomination: 7}}}), "7 gp", "a junk coin is not printed as one");
+});
+
+check("charges are read from rules text when an importer left the data empty", () => {
+  // Sentences copied from D&D Beyond importer and SRD 2024 descriptions.
+  const r = usesFromText;
+  eq(r("<p>These pipes have 3 charges and regain 1d3 expended charges daily at dawn.</p>"),
+    {max: 3, stated: null, regain: [{period: "dawn", amount: "1d3"}], kind: "charges"}, "Pipes of Haunting, 2024 wording");
+  eq(r("<p>They have 3 charges. You can use an action to play them.</p><p>The pipes regain 1d3 expended charges daily at dawn.</p>"),
+    {max: 3, stated: null, regain: [{period: "dawn", amount: "1d3"}], kind: "charges"}, "Pipes of Haunting, 2014 wording across paragraphs");
+  eq(r("The coin has 1 charge and regains its expended charge daily at dawn."),
+    {max: 1, stated: null, regain: [{period: "dawn", amount: null}], kind: "charges"}, "Rival Coin");
+  eq(r("The cube starts with 36 charges, and it regains 1d20 expended charges daily at dawn."),
+    {max: 36, stated: null, regain: [{period: "dawn", amount: "1d20"}], kind: "charges"}, "Cube of Force");
+  eq(r("you can use an action to expend 1 of its 10 charges to cast charm person"),
+    {max: 10, stated: null, regain: [], kind: "charges"}, "Staff of Charming");
+  eq(r("The weapon has 1d8 + 1 charges. The weapon loses 1 charge if the creature is slain."),
+    {max: null, stated: "1d8 + 1", regain: [], kind: "charges"}, "Nine Lives Stealer: a roll, not a count");
+  eq(r("The sword has 1d4 \u2013 1 charges. This property can\u2019t be used again until the next dawn."),
+    {max: null, stated: "1d4 - 1", regain: [], kind: "charges"}, "Luck Blade: the daily luck property does not restore Wish charges");
+  eq(r("<p>Once you use the pearl, it can\u2019t be used again until the next dawn.</p>"),
+    {max: 1, stated: null, regain: [{period: "dawn", amount: null}], kind: "limit"}, "Pearl of Power");
+  eq(r("While wearing @UUID[Compendium.x.Item.abc]{these eyes} you have 3 charges."),
+    {max: 3, stated: null, regain: [], kind: "charges"}, "enricher links are read as their label");
+
+  eq(r("Once three fuzzy objects have been pulled from the bag, the bag can't be used again until the next dawn."),
+    {max: 3, stated: null, regain: [{period: "dawn", amount: null}], kind: "limit"}, "Bag of Tricks: three, not once");
+  eq(r("The creature vanishes at the next dawn. Once used, it can't be used again until the next dawn."),
+    {max: 1, stated: null, regain: [{period: "dawn", amount: null}], kind: "limit"}, "a count in an earlier sentence is not borrowed");
+  eq(r("you regain a number of hit points equal to half the damage"), null, "hit points are not charges");
+  eq(r("<p>A simple longsword.</p>"), null);
+  eq(r(""), null);
+  eq(r(undefined), null);
+});
+
+check("uses recorded on activities count as tracked, and prose-only ones are flagged", () => {
+  const a = DND5E_ADAPTER;
+  const tr = (key, data) => `${key}${data ? JSON.stringify(data) : ""}`;
+  const javelin = {type: "weapon", system: {uses: {spent: null, recovery: []}, activities: {
+    x1: {type: "attack", uses: {spent: null, recovery: []}},
+    x2: {type: "cast", name: "Lightning Bolt", uses: {max: "1", recovery: [{period: "dawn", type: "recoverAll"}]}}}}};
+  eq(a.useProfile(javelin), "recharge", "Javelin of Lightning keeps its limit on the activity");
+  const jav = describeUses(a.useDetail(javelin), tr);
+  eq(jav.tag, "1/Use.Tag.dawn");
+  eq(jav.untracked, false);
+
+  const pipes = {type: "equipment", system: {uses: {spent: null, recovery: []},
+    description: {value: "<p>These pipes have 3 charges and regain 1d3 expended charges daily at dawn.</p>"}}};
+  const p = describeUses(a.useDetail(pipes), tr);
+  eq(a.useProfile(pipes), "recharge");
+  eq(p.tag, "\u26a0 3/Use.Tag.dawn");
+  assert(p.untracked && p.text.endsWith("Use.Untracked"), "says the sheet will not track them");
+
+  const nine = describeUses(a.useDetail({type: "weapon", system: {description: {value: "The weapon has 1d8 + 1 charges."}}}), tr);
+  eq(nine.tag, "\u26a0 ?\u00d7");
+  eq(nine.text, 'Use.ChargesKept{"n":"1d8 + 1"} \u2014 Use.Untracked');
+
+  const charming = {type: "weapon", system: {uses: {}, activities: {
+    s: {type: "save", name: "Auto Save", uses: {max: "1", recovery: [{period: "lr", type: "recoverAll"}]}}},
+    description: {value: "<p>you can expend 1 of its 10 charges to cast charm person</p>"}}};
+  eq(describeUses(a.useDetail(charming), tr).tag, "⚠ 10×", "Staff of Charming: its charges, not a side save");
+  const pooled = {type: "weapon", system: {uses: {}, activities: {
+    c: {type: "cast", uses: {max: "10", recovery: [{period: "dawn", type: "formula", formula: "1d6 + 4"}]}}},
+    description: {value: "<p>The staff has 10 charges.</p>"}}};
+  eq(describeUses(a.useDetail(pooled), tr).untracked, false, "charges kept on an activity are tracked, so no warning");
+
+  eq(a.useProfile({type: "spell", system: {description: {value: "The target has 3 charges."}}}), "permanent",
+    "spells and features are never read for charges");
+  eq(a.useProfile({type: "equipment", system: {uses: {max: "3", recovery: []},
+    description: {value: "It has 9 charges and regains 1d6 daily at dawn."}}}), "charges",
+    "tracked data always wins over prose");
 });
 
 check("no dnd5e reader throws on a malformed item", () => {

@@ -637,7 +637,7 @@ export class WheelBuilder extends ApplicationV2 {
                 data-tooltip="${c.redundant ? t("Builder.LikelyDuplicate") : t("Builder.Variants", {n: c.variants})}"
                 >${c.variants}&times;</span>`
             : `<span class="var"></span>`)}
-        ${adapter.tracksUses ? `<span class="use u-${use.profile}" data-tooltip="${foundry.utils.escapeHTML(use.text)}">${use.tag}</span>` : ""}
+        ${adapter.tracksUses ? `<span class="use u-${use.profile}${use.untracked ? " untracked" : ""}" data-tooltip="${foundry.utils.escapeHTML(use.text)}">${use.tag}</span>` : ""}
         ${c.rarity ? `<span class="rar r-${rarityClass(c.rarity)}">${foundry.utils.escapeHTML(adapter.rarityLabel(c.rarity))}</span>` : `<span class="rar"></span>`}
         <button type="button" data-action="expand" data-uuid="${c.uuid}"
           aria-label="${t("Builder.Aria.Expand", {name: safe})}" data-tooltip="${t("Builder.ShowDetail")}">
@@ -1440,6 +1440,12 @@ export class WheelBuilder extends ApplicationV2 {
 
     const profile = adapter.useProfile(doc);
     const uses = describeUses(adapter.useDetail(doc), t, profile);
+    // When this copy only states its charges in prose, point at one that
+    // records them — the SRD often has it where an importer did not.
+    const tracked = uses.untracked
+      ? cachedCatalogue().find(c => c.name === doc.name && c.uuid !== doc.uuid
+        && c.uses && !c.uses.untracked && (c.profile === "charges" || c.profile === "recharge"))
+      : null;
 
     // Every fact goes through the adapter, so this panel says something true in
     // a world running any system rather than dashes in all but one.
@@ -1457,7 +1463,11 @@ export class WheelBuilder extends ApplicationV2 {
         <dl class="facts">
           ${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${foundry.utils.escapeHTML(String(v))}</dd></div>`).join("")}
         </dl>
-        ${adapter.tracksUses && (profile === "charges" || profile === "recharge") ? `<p class="warn"><i class="fa-solid fa-triangle-exclamation"></i>
+        ${adapter.tracksUses && uses.untracked ? `<p class="warn"><i class="fa-solid fa-triangle-exclamation"></i>
+          ${t("Builder.WarnUntracked")}${tracked ? ` ${foundry.utils.escapeHTML(t("Builder.TrackedCopy", {
+            source: tracked.source, pack: tracked.packLabel}))}` : ""}</p>` : ""}
+        ${adapter.tracksUses && !uses.untracked && (profile === "charges" || profile === "recharge")
+          ? `<p class="warn"><i class="fa-solid fa-triangle-exclamation"></i>
           ${t(profile === "recharge" ? "Builder.WarnRecharge" : "Builder.WarnCharges")}</p>` : ""}
         <p class="desc">${foundry.utils.escapeHTML(
           await richText(adapter.descriptionOf(doc), 1200) || t("Builder.NoDescription"))}</p>

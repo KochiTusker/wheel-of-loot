@@ -651,6 +651,7 @@
 .u-charges  { color: #c48b1f; }
 .u-recharge { color: #c0563a; }
 .u-permanent { color: #6b7280; }
+.wol-b-row .use.untracked { color: #b45309; font-style: italic; }
 
 .wol-b-row.clash .nm i.fa-clone { color: #c48b1f; }
 
