@@ -3,6 +3,52 @@
 All notable changes to this module are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] — 2026-09-23
+
+A hardening release: a round of adversarial testing against ordinary D&D 5e
+worlds rather than the author's own. **socketlib remains the only required
+module.**
+
+### Fixed
+
+- **A second GM joining could close a live wheel.** When a full Gamemaster
+  logged in while an Assistant GM was running a wheel, every spin went to the
+  newcomer, which knew nothing of it — and the wheel closed on every screen,
+  costing a player who had already spun their credit. A wheel now stays with
+  the GM who presented it.
+- **Unidentified items gave themselves away.** The reveal showed the true rules
+  text and rarity colour. Players now see the item's unidentified description
+  and no rarity; the GM still sees the truth in the builder.
+- **Rules text showed raw enricher syntax.** Descriptions read "must succeed on
+  a [[/save]] saving throw"; they now read "a DC 11 Constitution saving throw",
+  on the reveal and in the builder.
+- **Containers were granted empty.** Winning an Explorer's Pack gave only the
+  backpack. Contents now come with it, the prize remembers which compendium it
+  came from, and **Undo** takes the contents back too.
+- **Some text prizes paid out as coin.** "10 Silver Mirrors" paid 10 sp and
+  "100 gp gem" paid 100 gp. Only a name that is wholly a payout ("250 gp",
+  "10 Gold Pieces") is now treated as coin.
+- **A refused gift froze the spinner's screen** on "Gifting…" with no buttons.
+  The choice now comes back, the gift list only offers characters that can
+  receive loot, and closing a wheel mid-spin refunds the spin.
+- **Tables of monsters, journals or sub-tables** could be presented and then
+  fail at the moment someone kept a prize. They are now refused up front.
+- **One malformed item could empty the whole item list.** Items from older
+  module packs (saved under dnd5e 2.x/3.x) or odd homebrew are now read in any
+  shape, and an unreadable one still appears rather than taking the list down.
+- **2d6-style tables** are named as such instead of reporting "gaps"; spins are
+  only handed out once a wheel actually opens; a GM alone in a world can open
+  the launcher; rarity names no longer break in accented languages
+  ("LéGendaire").
+
+### Changed
+
+- **Charges are read from wherever the item keeps them.** Limits stored on an
+  item's activities now show (Javelin of Lightning **1/dawn**). Items whose data
+  records no charges but whose description states them — common with the D&D
+  Beyond importer — show the count with an amber **⚠**, and the details panel
+  says the sheet will not track them and names a copy that does.
+
 ## [2.0.2] — 2026-09-23
 
 ### Fixed
