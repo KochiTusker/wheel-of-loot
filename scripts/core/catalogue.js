@@ -79,6 +79,7 @@ function toRow(entry, uuid, packId, packLabel) {
     price: adapter.priceOf(entry),
     usesMax: adapter.usesMaxOf(entry),
     profile: adapter.useProfile(entry),
+    uses: adapter.useDetail?.(entry) ?? null,
     packId,
     packLabel
   };

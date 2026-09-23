@@ -22,6 +22,7 @@ import {
 } from "../core/wheel-data.js";
 import {DEDUPE_MODES, foldDuplicates} from "../core/dedupe.js";
 import {DEFAULT_ODDS, MAX_ODDS, MIN_ODDS, clampOdds, isUnweighted, trueChances} from "../core/odds.js";
+import {describeUses} from "../core/uses.js";
 import {coinDenomination, coinPresets, defaultSlots, resolveWheelConfig} from "../core/settings.js";
 import {MODULE_ID, t} from "../core/constants.js";
 import {nameIconButtons} from "./a11y.js";
@@ -29,12 +30,6 @@ import {planWheel} from "../core/wheel-plan.js";
 import {systemAdapter} from "../systems/adapter.js";
 
 const {ApplicationV2, DialogV2} = foundry.applications.api;
-
-const USE_LABEL = {
-  single: {tag: "1×", key: "Use.Single"},
-  charges: {tag: "N×", key: "Use.Charges"},
-  recharge: {tag: "↻", key: "Use.Recharge"}
-};
 
 /** Rows rendered before the list is cut short; the filters are the answer. */
 const CATALOGUE_CAP = 300;
@@ -147,12 +142,14 @@ export class WheelBuilder extends ApplicationV2 {
       let rarity = null;
       let missing = false;
       let source = "";
-      let profile = "single";
+      let profile = "permanent";
+      let uses = null;
       if (result.documentUuid) {
         const hit = catalogueRow(result.documentUuid);
         rarity = hit?.rarity ?? null;
         source = hit?.source ?? "";
-        profile = hit?.profile ?? "single";
+        profile = hit?.profile ?? "permanent";
+        uses = hit?.uses ?? null;
         // Not in the index is not proof of absence — unindexed packs exist — so
         // confirm by resolving before crying wolf.
         if (!hit) {
@@ -165,7 +162,8 @@ export class WheelBuilder extends ApplicationV2 {
           // system's field names matter, and reading system.source.* here made
           // every non-5e world show a dash.
           source = doc ? adapter.sourceOf(doc) : "";
-          profile = doc ? adapter.useProfile(doc) : "single";
+          profile = doc ? adapter.useProfile(doc) : "permanent";
+          uses = doc ? adapter.useDetail(doc) : null;
         }
       }
       // A prize with no document behind it keeps its own rarity and its own
@@ -192,6 +190,7 @@ export class WheelBuilder extends ApplicationV2 {
         missing,
         source,
         profile,
+        uses,
         isCoin: !result.documentUuid && !!adapter.parseCurrency(result.name)
       });
     }
@@ -545,9 +544,9 @@ export class WheelBuilder extends ApplicationV2 {
       row = {
         uuid, name: doc.name, img: doc.img,
         rarity: adapter.rarityOf(doc),
-        source: foundry.utils.getProperty(doc, "system.source.book")
-          || foundry.utils.getProperty(doc, "system.source.custom") || "",
-        profile: adapter.useProfile(doc)
+        source: adapter.sourceOf(doc),
+        profile: adapter.useProfile(doc),
+        uses: adapter.useDetail(doc)
       };
     }
 
@@ -580,7 +579,8 @@ export class WheelBuilder extends ApplicationV2 {
       stock: null,
       rarity: row.rarity ?? null,
       source: row.source ?? "",
-      profile: row.profile ?? "single",
+      profile: row.profile ?? "permanent",
+      uses: row.uses ?? null,
       missing: false,
       isCoin: false
     };
@@ -604,7 +604,7 @@ export class WheelBuilder extends ApplicationV2 {
     const used = new Set(this.entries.map(e => e.uuid).filter(Boolean));
 
     list.innerHTML = shown.map(c => {
-      const use = USE_LABEL[c.profile];
+      const use = describeUses(c.uses, t, c.profile);
       const onWheel = used.has(c.uuid);
       const safe = foundry.utils.escapeHTML(c.name);
       return `
@@ -628,7 +628,7 @@ export class WheelBuilder extends ApplicationV2 {
                 data-tooltip="${c.redundant ? t("Builder.LikelyDuplicate") : t("Builder.Variants", {n: c.variants})}"
                 >${c.variants}&times;</span>`
             : `<span class="var"></span>`)}
-        ${adapter.tracksUses ? `<span class="use u-${c.profile}" data-tooltip="${t(use.key)}">${use.tag}</span>` : ""}
+        ${adapter.tracksUses ? `<span class="use u-${use.profile}" data-tooltip="${foundry.utils.escapeHTML(use.text)}">${use.tag}</span>` : ""}
         ${c.rarity ? `<span class="rar r-${c.rarity}">${adapter.rarityLabel(c.rarity)}</span>` : `<span class="rar"></span>`}
         <button type="button" data-action="expand" data-uuid="${c.uuid}"
           aria-label="${t("Builder.Aria.Expand", {name: safe})}" data-tooltip="${t("Builder.ShowDetail")}">
@@ -677,7 +677,7 @@ export class WheelBuilder extends ApplicationV2 {
     this.entries.forEach(e => nameCounts.set(e.name, (nameCounts.get(e.name) ?? 0) + 1));
 
     list.innerHTML = this.entries.map((e, i) => {
-      const use = USE_LABEL[e.profile ?? "single"];
+      const use = describeUses(e.uses, t, e.profile);
       const clash = nameCounts.get(e.name) > 1;
       // Source book and use profile used to have columns of their own here.
       // Between them they took 98px off a row that had none to spare, and the
@@ -692,7 +692,7 @@ export class WheelBuilder extends ApplicationV2 {
       const tip = nameTooltip(
         e.name,
         e.uuid && e.source,
-        e.uuid && adapter.tracksUses && t(use.key),
+        e.uuid && adapter.tracksUses && use.text,
         e.custom && t("Builder.CustomTag"),
         e.missing && t("Builder.MissingItem")
       );
@@ -1429,23 +1429,17 @@ export class WheelBuilder extends ApplicationV2 {
       return;
     }
 
-    const s = doc.system ?? {};
-    const uses = s.uses ?? {};
-    const recovery = (Array.isArray(uses.recovery) ? uses.recovery : [])
-      .filter(r => r?.period)
-      .map(r => `${r.formula ? `${r.formula} ` : ""}per ${r.period}`)
-      .join(", ");
     const profile = adapter.useProfile(doc);
+    const uses = describeUses(adapter.useDetail(doc), t, profile);
 
     // Every fact goes through the adapter, so this panel says something true in
     // a world running any system rather than dashes in all but one.
-    const maxUses = adapter.usesMaxOf(doc);
     const facts = [
       [t("Builder.Fact.Source"), adapter.sourceOf(doc) || "—"],
       [t("Builder.Fact.Pack"), doc.compendium?.metadata?.label ?? t("Catalogue.WorldItems")],
       [t("Builder.Fact.Rarity"), adapter.rarityOf(doc) ? adapter.rarityLabel(adapter.rarityOf(doc)) : "—"],
       [t("Builder.Fact.Price"), adapter.priceOf(doc) ?? "—"],
-      [t("Builder.Fact.Uses"), maxUses ? `${maxUses}${recovery ? ` (${recovery})` : ""}` : t("Use.Single")],
+      [t("Builder.Fact.Uses"), uses.text],
       [t("Builder.Fact.Type"), adapter.subtypeOf(doc) || doc.type]
     ];
 
@@ -1454,7 +1448,7 @@ export class WheelBuilder extends ApplicationV2 {
         <dl class="facts">
           ${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${foundry.utils.escapeHTML(String(v))}</dd></div>`).join("")}
         </dl>
-        ${adapter.tracksUses && profile !== "single" ? `<p class="warn"><i class="fa-solid fa-triangle-exclamation"></i>
+        ${adapter.tracksUses && (profile === "charges" || profile === "recharge") ? `<p class="warn"><i class="fa-solid fa-triangle-exclamation"></i>
           ${t(profile === "recharge" ? "Builder.WarnRecharge" : "Builder.WarnCharges")}</p>` : ""}
         <p class="desc">${foundry.utils.escapeHTML(
           await richText(adapter.descriptionOf(doc), 1200) || t("Builder.NoDescription"))}</p>

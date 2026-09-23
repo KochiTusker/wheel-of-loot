@@ -30,24 +30,58 @@ const CURRENCY_WORDS = {
 };
 
 /**
- * How many times an item can be used.
+ * Consumable subtypes that are spent by using them even when no uses are
+ * tracked: one arrow per shot, one vial per throw.
+ */
+const EXPENDABLE_SUBTYPES = new Set(["ammo", "potion", "poison", "scroll", "food"]);
+
+/**
+ * How an item is used up, read straight off its own `system.uses`.
  *
- * dnd5e files permanent charged magic items under `type: "consumable"` too —
- * Pipes of Haunting is a "consumable" with three charges that regain 1d3 on a
- * long rest — so the type alone does not mean single-use. Recovery periods are
- * the reliable tell; charges without recovery are expendable but multi-use.
+ * Every rule here was checked against the SRD packs, not guessed:
+ *
+ * - dnd5e files permanent charged items under `type: "consumable"` too —
+ *   Pipes of Haunting has three charges regaining 1d3 on a long rest. A
+ *   recovery period is the reliable tell, so it wins over everything.
+ * - No uses does not mean single-use either. A longsword tracks none because
+ *   it is never spent, and the 2014 pack files Carpet of Flying, Crystal Ball
+ *   and Portable Hole as uncounted "consumable" trinkets. Only an expendable
+ *   subtype (ammo, potion…) makes an uncounted consumable single-use.
+ * - One use with no recovery is single-use only on something that goes away:
+ *   a consumable, or anything marked `autoDestroy`. Frost Brand and Wings of
+ *   Flying carry `max: 1` for a limited feature, not because they are spent.
  *
  * Takes the whole document or index row rather than `system.uses`, so the
  * adapter interface stays uniform across systems that keep it elsewhere.
  *
  * @param {object} source  Document or compendium index entry.
- * @returns {"single"|"charges"|"recharge"}
+ * @returns {{profile: "single"|"charges"|"recharge"|"permanent", max: number|null,
+ *   regain: {period: string, amount: string|null}[], destroyed: boolean}}
+ *   `amount` null means everything comes back.
  */
-export function useProfile(source) {
+export function useDetail(source) {
   const uses = foundry.utils.getProperty(source, "system.uses") ?? {};
-  const recovery = Array.isArray(uses.recovery) ? uses.recovery : [];
-  if (recovery.some(r => r?.period)) return "recharge";
-  return (Number(uses.max) || 0) > 1 ? "charges" : "single";
+  const max = Number(uses.max) || 0;
+  const destroyed = uses.autoDestroy === true;
+  const regain = (Array.isArray(uses.recovery) ? uses.recovery : [])
+    .filter(r => r?.period)
+    .map(r => ({
+      period: r.period,
+      amount: r.type === "formula" && r.formula ? String(r.formula) : null
+    }));
+  const detail = profile => ({profile, max: max || null, regain, destroyed});
+
+  if (regain.length) return detail("recharge");
+  if (max > 1) return detail("charges");
+  const consumable = source?.type === "consumable";
+  if (max === 1) return detail(consumable || destroyed ? "single" : "permanent");
+  const subtype = foundry.utils.getProperty(source, "system.type.value");
+  return detail(consumable && EXPENDABLE_SUBTYPES.has(subtype) ? "single" : "permanent");
+}
+
+/** @returns {"single"|"charges"|"recharge"|"permanent"} */
+export function useProfile(source) {
+  return useDetail(source).profile;
 }
 
 export const DND5E_ADAPTER = {
@@ -82,6 +116,7 @@ export const DND5E_ADAPTER = {
   rarityOf: source => foundry.utils.getProperty(source, "system.rarity") || null,
 
   useProfile,
+  useDetail,
 
   sourceOf: entry => (foundry.utils.getProperty(entry, "system.source.book")
     || foundry.utils.getProperty(entry, "system.source.custom") || "").trim(),

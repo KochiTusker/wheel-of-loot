@@ -72,7 +72,8 @@ Hooks.once("init", () => registerSystemAdapter({
 | `indexFields` | Extra compendium index fields to request, so browsing does not cost a document load per row |
 | `rarities` | Rarity keys, least to most rare. Empty hides every rarity control |
 | `rarityOf` / `rarityColour` / `rarityLabel` | What a rarity is, what ink it prints in, what it is called |
-| `useProfile` | `"single"` / `"charges"` / `"recharge"` |
+| `useProfile` | `"single"` / `"charges"` / `"recharge"` / `"permanent"` |
+| `useDetail` | `{profile, max, regain: [{period, amount}], destroyed}`, or null — drives the "7/dawn" tag |
 | `tracksUses` | False hides the single-use filter entirely |
 | `parseCurrency` | `"250 gp"` → `{denom, amount}`, or null |
 | `grantCurrency` | Move coin into an actor's purse; return false if there is nowhere to put it |

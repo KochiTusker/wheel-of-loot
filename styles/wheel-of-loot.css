@@ -641,6 +641,7 @@
   flex: 0 0 auto;
   min-width: 1.5rem;
   text-align: center;
+  white-space: nowrap;
   font-size: 0.7rem;
   font-weight: 700;
   border-radius: 3px;
@@ -649,6 +650,7 @@
 .u-single   { color: #3f9c5c; }
 .u-charges  { color: #c48b1f; }
 .u-recharge { color: #c0563a; }
+.u-permanent { color: #6b7280; }
 
 .wol-b-row.clash .nm i.fa-clone { color: #c48b1f; }
 

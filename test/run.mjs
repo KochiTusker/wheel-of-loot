@@ -30,6 +30,7 @@ import {
 } from "../scripts/core/wheel-data.js";
 import {distributeSlots, drawDistinct, planWheel, rarityWeight} from "../scripts/core/wheel-plan.js";
 import {GENERIC_ADAPTER} from "../scripts/systems/adapter.js";
+import {describeUses} from "../scripts/core/uses.js";
 import {DND5E_ADAPTER, registerDnd5e} from "../scripts/systems/dnd5e.js";
 import {
   buildCatalogue, cachedCatalogue, catalogueRow, invalidateCatalogue,
@@ -1479,6 +1480,57 @@ check("dnd5e says which coin the price is in", () => {
   eq(DND5E_ADAPTER.priceOf({system: {price: {}}}), null);
   eq(DND5E_ADAPTER.usesMaxOf({system: {uses: {max: 3}}}), 3);
   eq(DND5E_ADAPTER.subtypeOf({system: {type: {value: "wand"}}}), "wand");
+});
+
+check("dnd5e reads use profiles the way the SRD packs record them", () => {
+  // Each shape is copied from the dnd5e 5.3 compendium, not invented.
+  const p = DND5E_ADAPTER.useProfile;
+  const item = (type, sub, uses) => ({type, system: {type: {value: sub}, uses}});
+  const none = {max: "", recovery: []};
+
+  eq(p(item("weapon", "martialM", none)), "permanent", "Longsword");
+  eq(p({type: "container", system: {}}), "permanent", "Bag of Holding tracks no uses at all");
+  eq(p(item("consumable", "trinket", {...none, autoDestroy: false})), "permanent",
+    "Carpet of Flying is filed as an uncounted consumable trinket");
+  eq(p(item("weapon", "martialM", {max: "1", recovery: []})), "permanent",
+    "Frost Brand's max 1 is a limited feature, not a spent item");
+
+  eq(p(item("consumable", "potion", {max: "1", recovery: [], autoDestroy: true})), "single", "Potion of Healing");
+  eq(p(item("consumable", "ammo", {...none, autoDestroy: false})), "single", "an arrow is spent per shot");
+  eq(p(item("consumable", "potion", {...none, autoDestroy: true})), "single", "Acid (vial)");
+
+  eq(p(item("equipment", "ring", {max: "3", recovery: []})), "charges", "Ring of Three Wishes");
+  eq(p(item("equipment", "wand", {max: "7", recovery: [{period: "dawn", type: "formula", formula: "1d6 + 1"}]})),
+    "recharge", "Wand of Magic Missiles");
+  eq(p(item("equipment", "clothing", {max: "1", recovery: [{period: "dawn", type: "recoverAll"}]})),
+    "recharge", "Cape of the Mountebank");
+});
+
+check("the use tag and sentence say what the item itself says", () => {
+  const tr = (key, data) => `${key}${data ? JSON.stringify(data) : ""}`;
+  const d = DND5E_ADAPTER.useDetail;
+  const say = src => describeUses(d(src), tr);
+
+  const wand = say({type: "equipment", system: {uses: {max: "7",
+    recovery: [{period: "dawn", type: "formula", formula: "1d6 + 1"}]}}});
+  eq(wand.tag, "7/Use.Tag.dawn");
+  eq(wand.text, 'Use.Regains{"n":7,"amount":"1d6 + 1","when":"Use.When.dawn"}');
+
+  const cape = say({type: "equipment", system: {uses: {max: "1", recovery: [{period: "day", type: "recoverAll"}]}}});
+  eq(cape.tag, "1/Use.Tag.day", "once per day shows as 1/day, not a bare recharge mark");
+  eq(cape.text, 'Use.Once{"when":"Use.When.day"}');
+
+  const boots = say({type: "equipment", system: {uses: {max: "3", recovery: [{period: "lr", type: "recoverAll"}]}}});
+  eq(boots.text, 'Use.RegainsAll{"n":3,"when":"Use.When.lr"}');
+
+  eq(say({type: "consumable", system: {uses: {max: "9", recovery: [], autoDestroy: true}}}).text,
+    'Use.ChargesGone{"n":9}', "Necklace of Fireballs");
+  eq(say({type: "consumable", system: {uses: {max: "9", recovery: [], autoDestroy: true}}}).tag, "9×");
+  eq(say({type: "weapon", system: {uses: {max: ""}}}).tag, "∞");
+
+  eq(describeUses(null, tr, "single").text, "Use.Single", "no detail falls back to the profile");
+  eq(say({type: "equipment", system: {uses: {max: "2", recovery: [{period: "turn", type: "recoverAll"}]}}}).text,
+    'Use.RegainsAll{"n":2,"when":"(turn)"}', "an unworded period still says something");
 });
 
 check("two printings still tell each other apart in a world that is not D&D", () => {

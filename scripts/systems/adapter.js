@@ -24,7 +24,9 @@ const REGISTRY = new Map();
  * @property {(key: string) => string} rarityColour   Ink a rarity's name is printed in.
  * @property {(key: string) => string} rarityLabel    Display name for a rarity.
  * @property {(source: object) => string|null} rarityOf   Rarity of a document or index row.
- * @property {(source: object) => "single"|"charges"|"recharge"} useProfile
+ * @property {(source: object) => "single"|"charges"|"recharge"|"permanent"} useProfile
+ * @property {(source: object) => object|null} useDetail  Profile plus charge count and
+ *   what comes back when — see `describeUses` in core/uses.js. Null when not tracked.
  * @property {boolean}  tracksUses     False hides the single-use filter entirely.
  * @property {(name: string) => {denom: string, amount: number}|null} parseCurrency
  * @property {(actor: Actor, payout: object) => Promise<boolean>} grantCurrency
@@ -135,6 +137,7 @@ export const GENERIC_ADAPTER = {
   rarityLabel: key => String(key ?? ""),
   rarityOf: () => null,
   useProfile: () => "single",
+  useDetail: () => null,
 
   /**
    * Parse "250 gp" out of a wedge name.

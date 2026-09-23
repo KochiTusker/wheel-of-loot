@@ -57,6 +57,10 @@ push it back.
 - **dnd5e: "consumable" does not mean single-use.** Pipes of Haunting is a consumable
   with 3 charges recovering `1d3` on a long rest. The reliable tell is
   `system.uses.recovery[].period`. Encoded in `useProfile()` in `systems/dnd5e.js`.
+  The reverse holds too: *no* uses does not mean single-use. A longsword tracks none,
+  the 2014 pack files Carpet of Flying as an uncounted consumable, and Frost Brand has
+  `max: 1` for a limited feature. Single-use needs a consumable (or `autoDestroy`) and,
+  when uncounted, an expendable subtype. Rules were checked against all SRD items.
 
 - **Duplicate item names are usually real variants**, not mistakes — different printings.
   `system.source.book` is the discriminator. A *redundant* copy is narrower: same name,
