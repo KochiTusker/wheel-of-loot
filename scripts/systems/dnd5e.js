@@ -29,6 +29,30 @@ const CURRENCY_WORDS = {
   pp: "pp", platinum: "pp"
 };
 
+/*
+ * Everything below reads `system.*` defensively, because index rows are *not*
+ * migrated. `pack.getIndex()` hands back what is stored, so a module pack last
+ * saved under dnd5e 2.x or 3.x arrives in the old shape even on 5.x — a bare
+ * number for price, a string for source, `uses.per` instead of a recovery
+ * array. Homebrew adds its own oddities. A reader here may return nothing, but
+ * it must never throw: one bad row used to cost the GM the whole catalogue.
+ */
+
+const get = (source, path) => foundry.utils.getProperty(source, path);
+
+/** A trimmed string, or "" — for fields that are text in some versions and not others. */
+function text(value) {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+/** Legacy spellings of rarity ("Very Rare", "very rare") folded onto dnd5e's keys. */
+const RARITY_ALIASES = Object.fromEntries(RARITY_ORDER.map(k => [k.toLowerCase(), k]));
+
+/** Pre-4.0 recovery periods, as `uses.per`. "charges" meant none at all. */
+const LEGACY_PERIODS = new Set(["sr", "lr", "day", "dawn", "dusk"]);
+
 /**
  * Consumable subtypes that are spent by using them even when no uses are
  * tracked: one arrow per shot, one vial per throw.
@@ -60,22 +84,28 @@ const EXPENDABLE_SUBTYPES = new Set(["ammo", "potion", "poison", "scroll", "food
  *   `amount` null means everything comes back.
  */
 export function useDetail(source) {
-  const uses = foundry.utils.getProperty(source, "system.uses") ?? {};
-  const max = Number(uses.max) || 0;
+  const raw = get(source, "system.uses");
+  const uses = raw && typeof raw === "object" ? raw : {};
+  const max = Math.max(0, Math.floor(Number(uses.max) || 0));
   const destroyed = uses.autoDestroy === true;
-  const regain = (Array.isArray(uses.recovery) ? uses.recovery : [])
-    .filter(r => r?.period)
-    .map(r => ({
-      period: r.period,
-      amount: r.type === "formula" && r.formula ? String(r.formula) : null
-    }));
+  const regain = Array.isArray(uses.recovery)
+    ? uses.recovery
+      .filter(r => r && typeof r === "object" && typeof r.period === "string" && r.period)
+      .map(r => ({
+        period: r.period,
+        amount: r.type === "formula" && text(r.formula) ? text(r.formula) : null
+      }))
+    // Pre-4.0: one period in `per`, and `recovery` was the formula as a string.
+    : LEGACY_PERIODS.has(uses.per)
+      ? [{period: uses.per, amount: text(uses.recovery) || null}]
+      : [];
   const detail = profile => ({profile, max: max || null, regain, destroyed});
 
   if (regain.length) return detail("recharge");
   if (max > 1) return detail("charges");
   const consumable = source?.type === "consumable";
   if (max === 1) return detail(consumable || destroyed ? "single" : "permanent");
-  const subtype = foundry.utils.getProperty(source, "system.type.value");
+  const subtype = get(source, "system.type.value") ?? get(source, "system.consumableType");
   return detail(consumable && EXPENDABLE_SUBTYPES.has(subtype) ? "single" : "permanent");
 }
 
@@ -89,10 +119,13 @@ export const DND5E_ADAPTER = {
 
   // Rarity, subtype, price, source and uses all drive the builder's UI, so they
   // have to come back on the index rather than costing a document load per row.
+  // Whole objects rather than leaf paths where the shape changed between
+  // versions: asking for `system.price.value` returns nothing from a pack that
+  // stored price as a bare number.
   indexFields: [
     "img", "type", "system.rarity", "system.type.value",
-    "system.price.value", "system.price.denomination",
-    "system.source.book", "system.source.custom", "system.uses"
+    "system.consumableType", "system.weaponType", "system.armor.type",
+    "system.price", "system.source", "system.uses"
   ],
 
   rarities: RARITY_ORDER,
@@ -113,25 +146,38 @@ export const DND5E_ADAPTER = {
       .replace(/\b\w/g, ch => ch.toUpperCase());
   },
 
-  rarityOf: source => foundry.utils.getProperty(source, "system.rarity") || null,
+  rarityOf(source) {
+    const value = text(get(source, "system.rarity"));
+    if (!value) return null;
+    return RARITY_ALIASES[value.toLowerCase().replace(/[\s_-]+/g, "")] ?? value;
+  },
 
   useProfile,
   useDetail,
 
-  sourceOf: entry => (foundry.utils.getProperty(entry, "system.source.book")
-    || foundry.utils.getProperty(entry, "system.source.custom") || "").trim(),
+  /** `{book, custom}` since 3.0; a bare string before that. */
+  sourceOf: entry => text(get(entry, "system.source.book"))
+    || text(get(entry, "system.source.custom"))
+    || text(get(entry, "system.source")),
 
   /** dnd5e keeps the denomination beside the number, so say which coin. */
   priceOf(entry) {
-    const value = foundry.utils.getProperty(entry, "system.price.value");
-    if (value === null || value === undefined || value === "") return null;
-    const denom = foundry.utils.getProperty(entry, "system.price.denomination") || "gp";
+    // `{value, denomination}` since 2.0; a bare number of gold before that.
+    const price = get(entry, "system.price");
+    const value = text(price && typeof price === "object" ? price.value : price);
+    if (!value) return null;
+    const denom = (price && typeof price === "object" && text(price.denomination)) || "gp";
     return `${value} ${denom}`;
   },
 
-  usesMaxOf: entry => Number(foundry.utils.getProperty(entry, "system.uses.max")) || null,
+  usesMaxOf: entry => useDetail(entry).max,
 
-  subtypeOf: entry => foundry.utils.getProperty(entry, "system.type.value") || null,
+  /** `system.type.value` since 3.0; each item type had its own field before. */
+  subtypeOf: entry => text(get(entry, "system.type.value"))
+    || text(get(entry, "system.consumableType"))
+    || text(get(entry, "system.weaponType"))
+    || text(get(entry, "system.armor.type"))
+    || null,
 
   parseCurrency(name) {
     const match = /^\s*(\d[\d,]*)\s*(gp|gold|sp|silver|cp|copper|ep|electrum|pp|platinum)\b/i.exec(name ?? "");

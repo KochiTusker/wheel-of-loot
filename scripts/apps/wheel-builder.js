@@ -56,6 +56,15 @@ function nameTooltip(...parts) {
 }
 
 /**
+ * A rarity as a CSS class suffix. dnd5e's own keys pass through untouched, so
+ * the `.r-veryRare` rules still match; homebrew text like "Mythic (Epic)" is
+ * reduced to something that cannot break out of the attribute.
+ */
+function rarityClass(key) {
+  return String(key).replace(/[^\w-]/g, "");
+}
+
+/**
  * Art for a prize the GM has not chosen art for.
  *
  * One of Foundry's own bundled icons rather than anything drawn for this
@@ -629,7 +638,7 @@ export class WheelBuilder extends ApplicationV2 {
                 >${c.variants}&times;</span>`
             : `<span class="var"></span>`)}
         ${adapter.tracksUses ? `<span class="use u-${use.profile}" data-tooltip="${foundry.utils.escapeHTML(use.text)}">${use.tag}</span>` : ""}
-        ${c.rarity ? `<span class="rar r-${c.rarity}">${adapter.rarityLabel(c.rarity)}</span>` : `<span class="rar"></span>`}
+        ${c.rarity ? `<span class="rar r-${rarityClass(c.rarity)}">${foundry.utils.escapeHTML(adapter.rarityLabel(c.rarity))}</span>` : `<span class="rar"></span>`}
         <button type="button" data-action="expand" data-uuid="${c.uuid}"
           aria-label="${t("Builder.Aria.Expand", {name: safe})}" data-tooltip="${t("Builder.ShowDetail")}">
           <i class="fa-solid fa-chevron-down"></i>
@@ -704,7 +713,7 @@ export class WheelBuilder extends ApplicationV2 {
           t("Builder.MissingItem")}"></i> ` : ""}${clash ? `<i class="fa-solid fa-clone" data-tooltip="${
           t("Builder.NameClash")}"></i> ` : ""}${foundry.utils.escapeHTML(e.name)}</span>
         <span class="tag">${e.custom ? t("Builder.CustomTag") : ""}</span>
-        ${e.rarity ? `<span class="rar r-${e.rarity}">${adapter.rarityLabel(e.rarity)}</span>` : `<span class="rar"></span>`}
+        ${e.rarity ? `<span class="rar r-${rarityClass(e.rarity)}">${foundry.utils.escapeHTML(adapter.rarityLabel(e.rarity))}</span>` : `<span class="rar"></span>`}
         <span class="slots">
           <button type="button" data-action="bump" data-index="${i}" data-delta="-1"
             aria-label="${t("Builder.Aria.SlotDown", {name: safe})}"><i class="fa-solid fa-minus"></i></button>
@@ -1486,7 +1495,7 @@ export class WheelBuilder extends ApplicationV2 {
               <span class="nm">${foundry.utils.escapeHTML(g.source || t("Builder.NoSource"))}</span>
               <span class="src" data-tooltip="${foundry.utils.escapeHTML(g.packLabel)}">${
                 foundry.utils.escapeHTML(g.packLabel)}</span>
-              ${g.rarity ? `<span class="rar r-${g.rarity}">${adapter.rarityLabel(g.rarity)}</span>` : `<span class="rar"></span>`}
+              ${g.rarity ? `<span class="rar r-${rarityClass(g.rarity)}">${foundry.utils.escapeHTML(adapter.rarityLabel(g.rarity))}</span>` : `<span class="rar"></span>`}
               ${g.usesMax != null ? `<span class="use">${g.usesMax}&times;</span>` : `<span class="use"></span>`}
               <button type="button" data-action="expand" data-uuid="${g.uuid}"
                 data-tooltip="${t("Builder.ShowDetail")}"><i class="fa-solid fa-chevron-down"></i></button>

@@ -1531,6 +1531,51 @@ check("dnd5e reads use profiles the way the SRD packs record them", () => {
     "recharge", "Cape of the Mountebank");
 });
 
+check("dnd5e reads a pack last saved under dnd5e 2.x or 3.x", () => {
+  // Index rows are not migrated, so an old module pack arrives in these shapes.
+  const a = DND5E_ADAPTER;
+  const wand = {type: "wand", name: "Old Wand", system: {
+    source: "DMG pg. 211", price: 8000, rarity: "Very Rare", consumableType: "wand",
+    uses: {value: 7, max: 7, per: "dawn", recovery: "1d6+1"}}};
+  eq(a.sourceOf(wand), "DMG pg. 211", "source was a bare string");
+  eq(a.priceOf(wand), "8000 gp", "price was a bare number of gold");
+  eq(a.rarityOf(wand), "veryRare", "old rarity spelling folds onto the current key");
+  eq(a.useProfile(wand), "recharge", "uses.per is the old recovery period");
+  eq(describeUses(a.useDetail(wand), (k, d) => `${k}${d ? JSON.stringify(d) : ""}`).text,
+    'Use.Regains{"n":7,"amount":"1d6+1","when":"Use.When.dawn"}');
+
+  eq(a.useProfile({type: "consumable", system: {uses: {max: 3, per: "charges", recovery: ""}}}), "charges",
+    '"charges" was the old way of saying no recovery');
+  eq(a.useProfile({type: "consumable", system: {consumableType: "potion", uses: {max: null}}}), "single",
+    "consumableType was the old subtype field");
+  eq(a.subtypeOf({system: {weaponType: "martialM"}}), "martialM");
+  eq(a.subtypeOf({system: {armor: {type: "heavy"}}}), "heavy");
+});
+
+check("no dnd5e reader throws on a malformed item", () => {
+  // Homebrew and hand-edited data: every field the adapter reads, in every
+  // wrong type it could plausibly hold.
+  const junk = [undefined, null, "", "text", 0, 7, NaN, true, [], [null], {}, {value: {}}, [{period: 5}]];
+  const shapes = [undefined, null, {}, {system: null}, {system: "legacy string"}, {type: 7, name: 3}];
+  for (const v of junk) {
+    shapes.push({type: "consumable", system: {uses: v, source: v, price: v, rarity: v, type: v}});
+    shapes.push({type: "weapon", system: {uses: {max: v, per: v, recovery: v, autoDestroy: v},
+      source: {book: v, custom: v}, price: {value: v, denomination: v}, armor: v}});
+  }
+  const a = DND5E_ADAPTER;
+  for (const shape of shapes) {
+    for (const read of ["rarityOf", "useProfile", "useDetail", "sourceOf", "priceOf", "usesMaxOf", "subtypeOf"]) {
+      let out;
+      try { out = a[read](shape); } catch (err) {
+        throw new Error(`${read} threw on ${JSON.stringify(shape)}: ${err.message}`);
+      }
+      if (read === "sourceOf") assert(typeof out === "string", `sourceOf returns text for ${JSON.stringify(shape)}`);
+      if (read === "useProfile") assert(["single", "charges", "recharge", "permanent"].includes(out), `profile ${out}`);
+    }
+    describeUses(a.useDetail(shape), k => k);
+  }
+});
+
 check("the use tag and sentence say what the item itself says", () => {
   const tr = (key, data) => `${key}${data ? JSON.stringify(data) : ""}`;
   const d = DND5E_ADAPTER.useDetail;

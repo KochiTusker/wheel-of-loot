@@ -34,7 +34,7 @@ let cache = null;
  * @property {string}  itemType    The document's `type`.
  * @property {?string} rarity      Adapter-resolved; null in systems without rarity.
  * @property {string}  source      Book or publication, adapter-resolved.
- * @property {string}  profile     "single" | "charges" | "recharge"
+ * @property {string}  profile     "single" | "charges" | "recharge" | "permanent"
  * @property {string}  packId
  * @property {string}  packLabel
  * @property {number}  variants    How many rows share this name.
@@ -60,13 +60,31 @@ export function cachedCatalogue() {
  * @param {string} packLabel
  */
 function toRow(entry, uuid, packId, packLabel) {
+  try {
+    return describeRow(entry, uuid, packId, packLabel);
+  } catch (err) {
+    // Homebrew and half-migrated packs carry shapes nobody anticipated. The
+    // item still belongs in the list — it can be found, added and granted —
+    // it just shows no details. Losing it would be worse; losing every item
+    // after it, which is what an uncaught throw here used to do, far worse.
+    console.warn(`Wheel of Loot | could not read details of ${uuid}`, err);
+    return {
+      ...describeRow({name: entry?.name, img: entry?.img, type: entry?.type}, uuid, packId, packLabel),
+      source: packLabel, book: ""
+    };
+  }
+}
+
+function describeRow(entry, uuid, packId, packLabel) {
   const adapter = systemAdapter();
   const book = adapter.sourceOf(entry);
   return {
     uuid,
-    name: entry.name,
+    // Required by Foundry's schema, but an index row is raw stored data and
+    // every sort and search downstream calls string methods on these.
+    name: typeof entry.name === "string" ? entry.name : String(entry.name ?? ""),
     img: entry.img,
-    itemType: entry.type,
+    itemType: typeof entry.type === "string" ? entry.type : "",
     sub: adapter.subtypeOf(entry),
     rarity: adapter.rarityOf(entry),
     // Fall back to the pack's own name so a system that records no book at all

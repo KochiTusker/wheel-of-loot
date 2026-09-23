@@ -62,6 +62,11 @@ push it back.
   `max: 1` for a limited feature. Single-use needs a consumable (or `autoDestroy`) and,
   when uncounted, an expendable subtype. Rules were checked against all SRD items.
 
+- **Compendium index rows are not migrated.** `getIndex()` returns stored data, so a
+  module pack last saved under dnd5e 2.x/3.x arrives in the old shape on 5.x: bare
+  number price, string source, `uses.per`. Adapter readers must accept every shape
+  and never throw — one throw in `toRow` used to blank the whole catalogue.
+
 - **Duplicate item names are usually real variants**, not mistakes — different printings.
   `system.source.book` is the discriminator. A *redundant* copy is narrower: same name,
   same pack, same book.
