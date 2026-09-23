@@ -13,7 +13,7 @@ import {getCredits, setSpins} from "./core/ledger.js";
 import {S, registerSettings, resolveWheelConfig} from "./core/settings.js";
 import {isExhausted} from "./core/odds.js";
 import {auditTable, buildEntries, describeFault, disperseSlots, SLOT_PRESETS, validateTable} from "./core/wheel-data.js";
-import {callOwner, registerSocket, socket, socketReady} from "./core/socket.js";
+import {callOwner, callSessionOwner, registerSocket, socket, socketReady} from "./core/socket.js";
 import {
   cancelWheel, hasLiveSessions, registerSession, releaseAbandonedSpins, requestSpin, resolveWheel,
   sessions, startSession
@@ -36,9 +36,10 @@ function openWheel(config) {
   LootWheel.present({
     ...config,
     // Routed to the wheel's owning GM rather than "any GM" — see callOwner.
-    onSpin: id => callOwner("requestSpin", id),
-    onResolve: (id, accepted, giftActorId) => callOwner("resolveWheel", id, accepted, giftActorId ?? null),
-    onCancel: id => callOwner("cancelWheel", id)
+    onSpin: id => callSessionOwner(config.ownerId, "requestSpin", id),
+    onResolve: (id, accepted, giftActorId) =>
+      callSessionOwner(config.ownerId, "resolveWheel", id, accepted, giftActorId ?? null),
+    onCancel: id => callSessionOwner(config.ownerId, "cancelWheel", id)
   });
 }
 
@@ -74,9 +75,12 @@ const clientHandlers = {
   depleteWedge: gmOnly(payload => LootWheel.deplete(payload)),
   exhaustWheel: gmOnly(sessionId => LootWheel.exhaust(sessionId)),
   closeWheel: gmOnly(sessionId => LootWheel.dismiss(sessionId)),
-  // No session id: the GM that sent this knows of no wheels at all, so whatever
-  // this client is showing cannot be served by anybody.
-  closeOrphanedWheel: gmOnly(() => LootWheel.dismissOrphan()),
+  // No session id: the GM that sent this knows of no wheels at all. Whatever
+  // this client shows is an orphan only if that GM owned it, or its owner has
+  // gone — another GM's live wheel is none of the sender's business.
+  closeOrphanedWheel: gmOnly(function () {
+    LootWheel.dismissOrphan(this?.socketdata?.userId ?? game.user.id);
+  }),
   notify: gmOnly(message => ui.notifications.warn(message))
 };
 
@@ -251,7 +255,9 @@ Hooks.once("ready", async () => {
   // case where this client is *not* freshly loaded but is re-electing itself as
   // designated GM mid-ceremony: then it does hold a session, and must not shut
   // its own wheel.
-  if (game.user.isGM && game.users.activeGM?.id === game.user.id && !hasLiveSessions()) {
+  // Any GM, not just the designated one: each owns its own wheels now, and the
+  // receiving clients decide whether the sender was the one serving theirs.
+  if (game.user.isGM && !hasLiveSessions()) {
     await socket().executeForEveryone("closeOrphanedWheel");
   }
 });

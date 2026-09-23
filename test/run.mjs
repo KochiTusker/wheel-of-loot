@@ -371,6 +371,36 @@ check("generic parseCurrency reads coin wedges", () => {
   eq(GENERIC_ADAPTER.parseCurrency(undefined), null);
 });
 
+check("a wheel's spins go to the GM that owns it, even after another GM outranks them", async () => {
+  const {registerSocket, callSessionOwner} = await import("../scripts/core/socket.js");
+  const sent = [];
+  const saved = {game: globalThis.game, socketlib: globalThis.socketlib, ui: globalThis.ui};
+  globalThis.socketlib = {registerModule: () => ({
+    register() {},
+    executeAsUser: async (handler, userId) => void sent.push([handler, userId])
+  })};
+  const assistant = {id: "assistant", isGM: true, active: true};
+  const gamemaster = {id: "gamemaster", isGM: true, active: true};
+  const users = new Map([[assistant.id, assistant], [gamemaster.id, gamemaster]]);
+  globalThis.ui = {notifications: {error() {}, warn() {}}};
+  globalThis.game = {i18n: {localize: k => k}, users: {get: id => users.get(id), activeGM: gamemaster}};
+  try {
+    registerSocket({});
+    // The Assistant GM presented; the full Gamemaster then joined and became activeGM.
+    await callSessionOwner("assistant", "requestSpin", "s1");
+    eq(sent.at(-1), ["requestSpin", "assistant"], "stays with the session's owner");
+
+    assistant.active = false;
+    await callSessionOwner("assistant", "requestSpin", "s1");
+    eq(sent.at(-1), ["requestSpin", "gamemaster"], "falls back to the designated GM once the owner leaves");
+
+    await callSessionOwner(undefined, "requestSpin", "s1");
+    eq(sent.at(-1), ["requestSpin", "gamemaster"], "a wheel from before owners were recorded still routes");
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});
+
 check("generic adapter asks the compendium index for every field it reads", () => {
   // An index row holds only the requested fields. Build one the way Foundry
   // does — picking just indexFields off the document — and the readers must
@@ -1595,6 +1625,9 @@ check("uses recorded on activities count as tracked, and prose-only ones are fla
   const jav = describeUses(a.useDetail(javelin), tr);
   eq(jav.tag, "1/Use.Tag.dawn");
   eq(jav.untracked, false);
+  const loaded = {...javelin, system: {...javelin.system, activities: new Map(Object.entries(javelin.system.activities))}};
+  eq(describeUses(a.useDetail(loaded), tr).tag, "1/Use.Tag.dawn",
+    "a loaded document keeps activities in a Map, and they still count");
 
   const pipes = {type: "equipment", system: {uses: {spent: null, recovery: []},
     description: {value: "<p>These pipes have 3 charges and regain 1d3 expended charges daily at dawn.</p>"}}};

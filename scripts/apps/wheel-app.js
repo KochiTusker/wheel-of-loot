@@ -272,8 +272,12 @@ export class LootWheel {
    * orphan. Says so rather than vanishing silently, because a wheel
    * disappearing unexplained looks like a different bug.
    */
-  static dismissOrphan() {
-    if (!LootWheel.current) return;
+  static dismissOrphan(senderId) {
+    const wheel = LootWheel.current;
+    if (!wheel) return;
+    const owner = game.users.get(wheel.config.ownerId);
+    // A wheel still held by another connected GM is not an orphan.
+    if (owner?.active && owner.isGM && owner.id !== senderId) return;
     ui.notifications.warn(t("Wheel.Orphaned"));
     LootWheel.current.destroy();
   }

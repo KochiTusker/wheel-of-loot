@@ -65,6 +65,8 @@ export async function registerSession(payload) {
 
   await socket().executeForEveryone("openWheel", {
     sessionId: payload.sessionId,
+    // This client holds the session, so this is where spins must come back to.
+    ownerId: game.user.id,
     tableName: payload.tableName,
     entries: payload.entries,
     layout: payload.layout,

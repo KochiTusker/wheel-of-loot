@@ -25,7 +25,9 @@ export function socketReady() {
  * their request landed on the other GM, which had no such session. It failed
  * silently, and looked for all the world like a permission problem.
  *
- * Pinning both creation and mutation to the designated GM keeps one owner.
+ * Creation is pinned to the designated GM, and every later call follows the
+ * wheel's recorded owner (`callSessionOwner`), so one wheel keeps one owner
+ * even when the designated GM changes mid-ceremony.
  *
  * @param {string} handler  Registered socketlib handler name.
  * @returns {Promise<any>}
@@ -37,7 +39,28 @@ export async function callOwner(handler, ...args) {
     ui.notifications.error(game.i18n.localize("WHEELOFLOOT.Notify.NoSocketlib"));
     return null;
   }
-  const owner = game.users.activeGM;
+  return callUser(game.users.activeGM, handler, ...args);
+}
+
+/**
+ * Route a wheel's traffic to the GM that holds its session.
+ *
+ * The designated GM can change mid-ceremony: a full Gamemaster joining while
+ * an Assistant GM runs a wheel outranks them, and `activeGM` moves. Following
+ * `activeGM` then sent every spin to a client with no such session. The wheel
+ * carries its owner instead; only if that GM has left does traffic fall back
+ * to the designated one, which then reports the missing session loudly.
+ *
+ * @param {string|null} ownerId  User id the wheel was presented from.
+ * @param {string} handler
+ */
+export async function callSessionOwner(ownerId, handler, ...args) {
+  const owner = game.users.get(ownerId);
+  if (!_socket) return callOwner(handler, ...args);
+  return callUser(owner?.active && owner.isGM ? owner : game.users.activeGM, handler, ...args);
+}
+
+function callUser(owner, handler, ...args) {
   if (!owner) {
     ui.notifications.error(game.i18n.localize("WHEELOFLOOT.Notify.NoGM"));
     return null;

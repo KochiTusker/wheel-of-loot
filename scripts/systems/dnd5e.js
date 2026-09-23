@@ -223,7 +223,9 @@ export function usesFromText(html) {
 function activityUses(source) {
   const activities = get(source, "system.activities");
   if (!activities || typeof activities !== "object") return [];
-  return Object.values(activities)
+  // A plain object on an index row, but an ActivityCollection — a Map, whose
+  // entries Object.values cannot see — on a loaded document.
+  return (activities instanceof Map ? [...activities.values()] : Object.values(activities))
     .filter(a => a && typeof a === "object" && Number(a.uses?.max) > 0)
     .map(a => a.uses);
 }
