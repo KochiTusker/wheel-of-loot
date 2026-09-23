@@ -129,7 +129,11 @@ const COIN_WORDS = {
  */
 export const GENERIC_ADAPTER = {
   id: "generic",
-  indexFields: ["img", "type"],
+  // Every path the readers below try has to be requested here. A compendium
+  // index row carries only what was asked for, so without these every pack
+  // item in an unadapted system came back with no source, price, charges or
+  // subtype — and the duplicate fold could not tell one printing from another.
+  indexFields: [...new Set(["img", "type", ...SOURCE_PATHS, ...PRICE_PATHS, ...USES_PATHS, ...SUBTYPE_PATHS])],
   rarities: [],
   tracksUses: false,
 

@@ -21,7 +21,7 @@ import {isOurGrant} from "../scripts/core/undo.js";
 import {nameIconButtons} from "../scripts/apps/a11y.js";
 import {wheelShape} from "../scripts/core/wheels.js";
 
-import {installEntryStub, installRollStub, installSettingsStub, installWorldStub} from "./harness.mjs";
+import {getProperty, installEntryStub, installRollStub, installSettingsStub, installWorldStub} from "./harness.mjs";
 
 import {
   buildEntries, clampSlots, disperseSlots, labelBudget, labelFontSize, MAX_SLOTS, MIN_SLOTS,
@@ -369,6 +369,31 @@ check("generic parseCurrency reads coin wedges", () => {
   eq(GENERIC_ADAPTER.parseCurrency("0 gp"), null, "a payout of nothing is not a payout");
   eq(GENERIC_ADAPTER.parseCurrency(""), null);
   eq(GENERIC_ADAPTER.parseCurrency(undefined), null);
+});
+
+check("generic adapter asks the compendium index for every field it reads", () => {
+  // An index row holds only the requested fields. Build one the way Foundry
+  // does — picking just indexFields off the document — and the readers must
+  // still find what the full document has.
+  const doc = {name: "Rope", type: "equipment", img: "r.webp", system: {
+    publication: {title: "Core Rulebook"}, price: {value: {gp: 5}}, uses: {max: 3},
+    category: "gear", description: {value: "<p>long text</p>"}}};
+  const row = {name: doc.name, _id: "x"};
+  for (const path of GENERIC_ADAPTER.indexFields) {
+    const value = getProperty(doc, path);
+    if (value === undefined) continue;
+    let at = row;
+    const steps = path.split(".");
+    for (const step of steps.slice(0, -1)) at = at[step] ??= {};
+    at[steps.at(-1)] = value;
+  }
+  const g = GENERIC_ADAPTER;
+  eq(g.sourceOf(row), g.sourceOf(doc));
+  eq(g.priceOf(row), g.priceOf(doc));
+  eq(g.usesMaxOf(row), g.usesMaxOf(doc));
+  eq(g.subtypeOf(row), g.subtypeOf(doc));
+  assert(!GENERIC_ADAPTER.indexFields.some(f => f.startsWith("system.description")),
+    "descriptions are loaded on demand, never indexed for thousands of rows");
 });
 
 check("generic adapter answers safely with no system knowledge", () => {
