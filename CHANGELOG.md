@@ -3,6 +3,30 @@
 All notable changes to this module are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] — 2026-09-23
+
+### Fixed
+
+- **The builder called almost everything single-use.** In D&D 5e, anything that
+  tracked no uses fell through to "single use", so longswords, armour and most
+  wondrous items wore the green **1×** tag and passed the **Single-use only**
+  filter. The 2014 item pack files Carpet of Flying, Crystal Ball and Portable
+  Hole as uncounted consumables, so they reached even the default
+  consumables-only view. Each item's own `system.uses` now decides, checked
+  against every item in the SRD packs, and items that are never spent show
+  **∞ Permanent**.
+
+  Prizes themselves were never affected: a winner always received the real
+  item with its real charges. Only the builder's labels and filter were wrong.
+
+### Changed
+
+- **The use tag says what the item says.** A recharging item shows its count
+  and period — Wand of Magic Missiles reads **7/dawn**, Boots of Speed
+  **1/LR** — instead of a bare ↻, and its tooltip and detail panel spell it
+  out: "7 charges, regaining 1d6 + 1 at dawn". Fixed charges say whether the
+  item is gone when the last is spent.
+
 ## [2.0.1] — 2026-09-08
 
 ### Changed
