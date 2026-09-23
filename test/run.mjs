@@ -1600,17 +1600,17 @@ check("uses recorded on activities count as tracked, and prose-only ones are fla
     description: {value: "<p>These pipes have 3 charges and regain 1d3 expended charges daily at dawn.</p>"}}};
   const p = describeUses(a.useDetail(pipes), tr);
   eq(a.useProfile(pipes), "recharge");
-  eq(p.tag, "\u26a0 3/Use.Tag.dawn");
+  eq(p.tag, "\u26a03/Use.Tag.dawn");
   assert(p.untracked && p.text.endsWith("Use.Untracked"), "says the sheet will not track them");
 
   const nine = describeUses(a.useDetail({type: "weapon", system: {description: {value: "The weapon has 1d8 + 1 charges."}}}), tr);
-  eq(nine.tag, "\u26a0 ?\u00d7");
+  eq(nine.tag, "\u26a0?\u00d7");
   eq(nine.text, 'Use.ChargesKept{"n":"1d8 + 1"} \u2014 Use.Untracked');
 
   const charming = {type: "weapon", system: {uses: {}, activities: {
     s: {type: "save", name: "Auto Save", uses: {max: "1", recovery: [{period: "lr", type: "recoverAll"}]}}},
     description: {value: "<p>you can expend 1 of its 10 charges to cast charm person</p>"}}};
-  eq(describeUses(a.useDetail(charming), tr).tag, "⚠ 10×", "Staff of Charming: its charges, not a side save");
+  eq(describeUses(a.useDetail(charming), tr).tag, "⚠10×", "Staff of Charming: its charges, not a side save");
   const pooled = {type: "weapon", system: {uses: {}, activities: {
     c: {type: "cast", uses: {max: "10", recovery: [{period: "dawn", type: "formula", formula: "1d6 + 4"}]}}},
     description: {value: "<p>The staff has 10 charges.</p>"}}};

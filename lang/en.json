@@ -122,7 +122,7 @@
   "WHEELOFLOOT.Builder.Variants": "{n} entries share this name, from different books. Expand to compare.",
   "WHEELOFLOOT.Builder.VariantsHeading": "Printings of “{name}” — pick the one you want",
   "WHEELOFLOOT.Builder.WarnCharges": "This has several charges. It is expendable, but not a single use.",
-  "WHEELOFLOOT.Builder.TrackedCopy": "A copy that does track them: {source} ({pack}).",
+  "WHEELOFLOOT.Builder.TrackedCopy": "A copy that does track them: {where}.",
   "WHEELOFLOOT.Builder.WarnUntracked": "This copy does not track its uses on the character sheet. The count comes from its description, so whoever wins it will have to track them by hand.",
   "WHEELOFLOOT.Builder.WarnRecharge": "This recharges on a rest — it is a permanent item, not a single-use one.",
   "WHEELOFLOOT.Builder.WeightByRarity": "Weight by rarity",

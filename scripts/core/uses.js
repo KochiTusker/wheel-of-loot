@@ -15,7 +15,7 @@ const WORDED_PERIODS = new Set(["lr", "sr", "day", "dawn", "dusk"]);
 const PLAIN_TAG = {single: "1×", charges: "N×", recharge: "↻", permanent: "∞"};
 
 /** Prefix on the tag of a count read from rules text rather than tracked data. */
-const UNTRACKED_MARK = "⚠ ";
+const UNTRACKED_MARK = "⚠";
 
 /**
  * @param {object|null} detail  From `adapter.useDetail`, or null.

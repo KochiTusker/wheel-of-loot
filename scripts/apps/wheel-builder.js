@@ -1465,7 +1465,9 @@ export class WheelBuilder extends ApplicationV2 {
         </dl>
         ${adapter.tracksUses && uses.untracked ? `<p class="warn"><i class="fa-solid fa-triangle-exclamation"></i>
           ${t("Builder.WarnUntracked")}${tracked ? ` ${foundry.utils.escapeHTML(t("Builder.TrackedCopy", {
-            source: tracked.source, pack: tracked.packLabel}))}` : ""}</p>` : ""}
+            // The source falls back to the pack's name, so do not say it twice.
+            where: tracked.source === tracked.packLabel ? tracked.source : `${tracked.source} (${tracked.packLabel})`
+          }))}` : ""}</p>` : ""}
         ${adapter.tracksUses && !uses.untracked && (profile === "charges" || profile === "recharge")
           ? `<p class="warn"><i class="fa-solid fa-triangle-exclamation"></i>
           ${t(profile === "recharge" ? "Builder.WarnRecharge" : "Builder.WarnCharges")}</p>` : ""}
