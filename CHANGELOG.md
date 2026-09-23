@@ -3,6 +3,19 @@
 All notable changes to this module are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] — 2026-09-23
+
+### Fixed
+
+- **Chain, Rope, Manacles and other reusable gear were marked single-use.**
+  Some packs — the D&D Beyond importer's especially — record ordinary gear as a
+  consumable with one use that is not destroyed when used, exactly as they
+  record a Bead of Force. The builder now calls such an item single-use only
+  with evidence: its rules text says it is spent ("the bead explodes", "the
+  token disappears"), or the same item in dnd5e's own SRD compendiums is
+  single-use (Acid, Oil, Holy Water, Caltrops). Otherwise it is shown as
+  permanent rather than guessed.
+
 ## [2.0.3] — 2026-09-23
 
 A hardening release: a round of adversarial testing against ordinary D&D 5e

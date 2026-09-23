@@ -232,6 +232,9 @@ export const GENERIC_ADAPTER = {
     return "";
   },
 
+  /** No reference packs: with no use profiles there is nothing to settle. */
+  isReferencePack: () => false,
+
   /** No notion of identification, so players see what the GM sees. */
   conceals: () => false,
 

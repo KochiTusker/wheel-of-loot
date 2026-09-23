@@ -30,7 +30,7 @@ import {
 } from "../scripts/core/wheel-data.js";
 import {distributeSlots, drawDistinct, planWheel, rarityWeight} from "../scripts/core/wheel-plan.js";
 import {GENERIC_ADAPTER} from "../scripts/systems/adapter.js";
-import {describeUses} from "../scripts/core/uses.js";
+import {describeUses, referenceKeys, settleFromReference} from "../scripts/core/uses.js";
 import {DND5E_ADAPTER, registerDnd5e, usesFromText} from "../scripts/systems/dnd5e.js";
 import {
   buildCatalogue, cachedCatalogue, catalogueRow, invalidateCatalogue,
@@ -1559,6 +1559,48 @@ check("dnd5e reads use profiles the way the SRD packs record them", () => {
     "recharge", "Wand of Magic Missiles");
   eq(p(item("equipment", "clothing", {max: "1", recovery: [{period: "dawn", type: "recoverAll"}]})),
     "recharge", "Cape of the Mountebank");
+});
+
+check("a one-use consumable that is not destroyed is not called single-use without evidence", () => {
+  const p = DND5E_ADAPTER.useDetail;
+  // D&D Beyond's Chain: consumable, max 1, autoDestroy false.
+  const chain = {type: "consumable", system: {type: {value: "trinket"},
+    uses: {max: "1", recovery: [], autoDestroy: false},
+    description: {value: "<p>As a Utilize action, you can wrap a Chain around an unwilling creature.</p>"}}};
+  eq(p(chain).profile, "permanent");
+  eq(p(chain).unsettled, true, "left for the reference packs to settle");
+
+  const bead = {type: "consumable", system: {type: {value: "wondrous"},
+    uses: {max: "1", recovery: [], autoDestroy: false},
+    description: {value: "<p>You can use an action to throw the bead up to 60 feet. The bead explodes on impact.</p>"}}};
+  eq(p(bead).profile, "single", "its rules text says it is gone");
+  eq(p({...chain, system: {...chain.system, uses: {max: "1", autoDestroy: true}}}).profile, "single",
+    "autoDestroy is still the plainest answer");
+});
+
+check("unsettled items take the system's own verdict, and only a unanimous one", () => {
+  eq(referenceKeys("Acid (vial)"), ["acid", "acid vial"]);
+  eq(referenceKeys("Feather Token (Anchor)"), ["feather token", "feather token anchor"]);
+  const row = (name, packId, profile, unsettled = false) => ({name, packId, profile, uses: {profile, unsettled}});
+  const rows = [
+    row("Chain (10 feet)", "dnd5e.items", "permanent"),
+    row("Acid (vial)", "dnd5e.items", "single"),
+    row("Rope", "dnd5e.items", "permanent", true),
+    row("Chain", "world.ddb-items", "permanent", true),
+    row("Acid", "world.ddb-items", "permanent", true),
+    row("Rope", "world.ddb-items", "permanent", true),
+    row("Grenade", "world.ddb-items", "permanent", true),
+    row("Chain", "world.homebrew", "single")
+  ];
+  const settled = settleFromReference(rows, r => DND5E_ADAPTER.isReferencePack(r.packId));
+  const by = n => rows.filter(r => r.name === n && r.packId === "world.ddb-items")[0];
+  eq(by("Chain").profile, "permanent");
+  eq(by("Chain").uses.unsettled, false);
+  eq(by("Acid").profile, "single", "the SRD's Acid (vial) is spent in one use");
+  eq(by("Rope").uses.unsettled, true, "an unsettled reference settles nothing");
+  eq(by("Grenade").profile, "permanent", "no evidence: never guessed to be single-use");
+  eq(settled, 2);
+  eq(GENERIC_ADAPTER.isReferencePack("dnd5e.items"), false);
 });
 
 check("only a name that is wholly a payout is paid as coin", () => {

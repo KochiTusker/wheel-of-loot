@@ -65,3 +65,61 @@ export function describeUses(detail, t, fallback = "permanent") {
 function plainText(profile, t) {
   return t(profile === "single" ? "Use.Single" : "Use.Permanent");
 }
+
+/* -------------------------------------------- */
+/*  Settling one-use items against a reference  */
+/* -------------------------------------------- */
+
+/**
+ * The name keys two printings of an item share: "Acid (vial)" and "Acid" both
+ * give "acid"; "Feather Token (Anchor)" also gives "feather token anchor".
+ *
+ * @param {string} name
+ * @returns {string[]}
+ */
+export function referenceKeys(name) {
+  const lower = String(name ?? "").toLowerCase().replace(/[\u2018\u2019]/g, "'");
+  const bare = lower.replace(/\s*\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+  const unwrapped = lower.replace(/[(),]/g, " ").replace(/\s+/g, " ").trim();
+  return [...new Set([bare, unwrapped].filter(Boolean))];
+}
+
+/**
+ * Decide the items an adapter left unsettled by asking a reference copy.
+ *
+ * "One use, not destroyed by using it" means Rope in one pack and Acid in
+ * another; the data cannot say which. The game system's own compendiums can: a
+ * same-named item there that *is* settled answers whether this one is used up.
+ * Only that question is borrowed — never a charge count, which would claim the
+ * sheet tracks something this copy does not store. Anything left over stays
+ * permanent, because calling gear single-use is the worse mistake.
+ *
+ * Mutates the rows it settles.
+ *
+ * @param {object[]} rows  Catalogue rows with `profile` and `uses`.
+ * @param {(row: object) => boolean} isReference  Whether a row is from the system's own packs.
+ * @returns {number} How many rows were settled.
+ */
+export function settleFromReference(rows, isReference) {
+  const verdicts = new Map();
+  for (const row of rows) {
+    if (!isReference(row) || row.uses?.unsettled) continue;
+    if (row.profile !== "single" && row.profile !== "permanent") continue;
+    for (const key of referenceKeys(row.name)) {
+      if (!verdicts.has(key)) verdicts.set(key, new Set());
+      verdicts.get(key).add(row.profile);
+    }
+  }
+  let settled = 0;
+  for (const row of rows) {
+    if (!row.uses?.unsettled) continue;
+    const found = new Set(referenceKeys(row.name).flatMap(k => [...(verdicts.get(k) ?? [])]));
+    // Only a unanimous answer counts; the reference disagreeing with itself is no answer.
+    if (found.size !== 1) continue;
+    const [profile] = found;
+    row.profile = profile;
+    row.uses = {...row.uses, profile, unsettled: false};
+    settled++;
+  }
+  return settled;
+}

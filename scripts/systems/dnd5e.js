@@ -133,9 +133,42 @@ function readUses(source, raw) {
   if (regain.length) return detail("recharge");
   if (max > 1) return detail("charges");
   const consumable = source?.type === "consumable";
-  if (max === 1) return detail(consumable || destroyed ? "single" : "permanent");
+  if (max === 1) {
+    if (destroyed) return detail("single");
+    if (!consumable) return detail("permanent");
+    // One use, not destroyed by using it. In dnd5e's own packs that is gear you
+    // use and keep — Rope, Manacles, Chain, Hunting Trap. But importers leave
+    // real one-shots the same way (Bead of Force, Feather Tokens), and their
+    // rules text says so. Otherwise the catalogue asks the SRD (`settle`).
+    if (spentByText(get(source, "system.description.value"))) return detail("single");
+    return {...detail("permanent"), unsettled: true};
+  }
   const subtype = get(source, "system.type.value") ?? get(source, "system.consumableType");
   return detail(consumable && EXPENDABLE_SUBTYPES.has(subtype) ? "single" : "permanent");
+}
+
+/**
+ * Rules text that says the item is gone once used. Checked against every
+ * one-use consumable in the SRD and D&D Beyond packs: it catches "The bead
+ * explodes", "the token disappears", "is consumed", and nothing on Rope, Chain,
+ * Lanterns or Manacles.
+ */
+const SPENT_RX = new RegExp([
+  String.raw`\b(?:is|are|becomes?) (?:destroyed|consumed|used up|expended)\b`,
+  String.raw`\b(?:it|the \w+(?: \w+)?|token|bead|gem|grenade|bomb|vial|flask|pot|stick) (?:explodes|shatters|crumbles(?: to dust)?|disintegrates|disappears|vanishes|dissolves|burns up)\b`,
+  String.raw`\bcan be used only once\b`,
+  String.raw`\bsingle use\b`,
+  String.raw`\bthen (?:disappears|vanishes|crumbles)\b`
+].join("|"), "i");
+
+/** @param {string} html */
+export function spentByText(html) {
+  if (typeof html !== "string" || !html) return false;
+  return SPENT_RX.test(html
+    .replace(/@\w+\[[^\]]*\]\{([^}]*)\}/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " "));
 }
 
 /** Item types that are gear. Spells and class features say "charges" about other things. */
@@ -300,6 +333,9 @@ export const DND5E_ADAPTER = {
   },
 
   usesMaxOf: entry => useDetail(entry).max,
+
+  /** dnd5e's own SRD compendiums: the reference for settling ambiguous items. */
+  isReferencePack: packId => typeof packId === "string" && packId.startsWith("dnd5e."),
 
   /**
    * Whether players must not learn what this item really is.

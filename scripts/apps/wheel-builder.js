@@ -1438,8 +1438,11 @@ export class WheelBuilder extends ApplicationV2 {
       return;
     }
 
-    const profile = adapter.useProfile(doc);
-    const uses = describeUses(adapter.useDetail(doc), t, profile);
+    // The catalogue's row is settled against the system's own packs; a bare
+    // read of the document is not, so prefer the row when there is one.
+    const settled = catalogueRow(doc.uuid);
+    const profile = settled?.profile ?? adapter.useProfile(doc);
+    const uses = describeUses(settled?.uses ?? adapter.useDetail(doc), t, profile);
     // When this copy only states its charges in prose, point at one that
     // records them — the SRD often has it where an importer did not.
     const tracked = uses.untracked

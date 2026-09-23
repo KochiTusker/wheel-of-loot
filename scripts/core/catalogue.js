@@ -17,6 +17,7 @@
  */
 
 import {annotateDuplicates} from "./dedupe.js";
+import {settleFromReference} from "./uses.js";
 import {systemAdapter} from "../systems/adapter.js";
 
 /** Pack id used for the world's own Items directory, which has no collection. */
@@ -41,6 +42,12 @@ let cache = null;
  * @property {boolean} redundant   Same printing, same pack, listed more than once.
  * @property {number}  score       Completeness, for choosing a representative.
  */
+
+/** Settle one-use items the adapter could not decide, from the system's own packs. */
+function settle(rows) {
+  const adapter = systemAdapter();
+  settleFromReference(rows, row => adapter.isReferencePack(row.packId));
+}
 
 /** Drop the cached index so the next build re-reads everything. */
 export function invalidateCatalogue() {
@@ -138,6 +145,7 @@ export async function buildCatalogue({force = false} = {}) {
   }
 
   rows.sort((a, b) => a.name.localeCompare(b.name));
+  settle(rows);
   annotateDuplicates(rows);
 
   cache = rows;
@@ -174,6 +182,8 @@ export function upsertWorldItem(item) {
   if (!cache || !isWorldItem(item)) return false;
   const worldLabel = game.i18n.localize("WHEELOFLOOT.Catalogue.WorldItems");
   const row = toRow(item, item.uuid, WORLD_PACK_ID, worldLabel);
+  // Settle the newcomer against the reference rows already in the cache.
+  if (row.uses?.unsettled) settle([...cache.filter(c => c.uuid !== item.uuid), row]);
   const at = cache.findIndex(c => c.uuid === item.uuid);
   if (at >= 0) cache[at] = row;
   else {
