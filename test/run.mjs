@@ -1561,6 +1561,54 @@ check("dnd5e reads use profiles the way the SRD packs record them", () => {
     "recharge", "Cape of the Mountebank");
 });
 
+check("only a name that is wholly a payout is paid as coin", () => {
+  const p = DND5E_ADAPTER.parseCurrency;
+  eq(p("250 gp"), {denom: "gp", amount: 250});
+  eq(p("1,000 gp"), {denom: "gp", amount: 1000});
+  eq(p("10 Gold Pieces"), {denom: "gp", amount: 10});
+  eq(p("5gp"), {denom: "gp", amount: 5});
+  eq(p("10 Silver Mirrors"), null, "a prize, not a purse");
+  eq(p("1 Platinum Ring"), null);
+  eq(p("100 gp gem"), null);
+  eq(p("50 gp, 20 sp"), null, "a mixed purse goes to the GM rather than paying half");
+  eq(GENERIC_ADAPTER.parseCurrency("3 Copper Bracelets"), null);
+  eq(GENERIC_ADAPTER.parseCurrency("12 pp"), {denom: "pp", amount: 12});
+});
+
+check("an unidentified item keeps its secret from players", () => {
+  const a = DND5E_ADAPTER;
+  const poison = {type: "consumable", system: {identified: false, rarity: "uncommon",
+    description: {value: "<p>This concoction looks like a healing potion but is poison.</p>"},
+    unidentified: {description: "<p>A red, glimmering liquid.</p>"}}};
+  eq(a.conceals(poison), true);
+  eq(a.publicDescriptionOf(poison), "<p>A red, glimmering liquid.</p>");
+  // dnd5e inherits the generic reader for the GM-facing text.
+  eq(GENERIC_ADAPTER.descriptionOf(poison), "<p>This concoction looks like a healing potion but is poison.</p>",
+    "the GM still reads the truth in the builder");
+  const known = {...poison, system: {...poison.system, identified: true}};
+  eq(a.conceals(known), false);
+  eq(a.publicDescriptionOf(known), "<p>This concoction looks like a healing potion but is poison.</p>");
+  eq(GENERIC_ADAPTER.conceals(poison), false);
+});
+
+check("rarity labels are capitalised without breaking accented languages", () => {
+  const saved = globalThis.CONFIG;
+  try {
+    globalThis.CONFIG = {DND5E: {itemRarity: {veryRare: "very rare", legendary: "légendaire", rare: "très rare"}}};
+    eq(DND5E_ADAPTER.rarityLabel("veryRare"), "Very Rare");
+    eq(DND5E_ADAPTER.rarityLabel("legendary"), "Légendaire", "not LéGendaire");
+    eq(DND5E_ADAPTER.rarityLabel("rare"), "Très Rare");
+    eq(DND5E_ADAPTER.rarityLabel("mythic"), "Mythic", "an unknown key is dressed up");
+  } finally {
+    globalThis.CONFIG = saved;
+  }
+});
+
+check("a multi-dice table is named as such, not as gaps", () => {
+  const faults = validateTable(fakeTable([[2, 12]], "2d6"));
+  eq(faults.map(f => f.code), ["FormulaDice"]);
+});
+
 check("dnd5e reads a pack last saved under dnd5e 2.x or 3.x", () => {
   // Index rows are not migrated, so an old module pack arrives in these shapes.
   const a = DND5E_ADAPTER;

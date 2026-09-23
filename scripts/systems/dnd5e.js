@@ -6,7 +6,7 @@
  * `system.rarity`, `system.uses` or `system.currency` directly.
  */
 
-import {registerSystemAdapter} from "./adapter.js";
+import {GENERIC_ADAPTER, registerSystemAdapter} from "./adapter.js";
 
 /** Rarity -> the colour its *name* is printed in on the wheel. */
 const RARITY_COLOURS = {
@@ -264,10 +264,14 @@ export const DND5E_ADAPTER = {
    */
   rarityLabel(key) {
     const conf = CONFIG.DND5E?.itemRarity?.[key];
-    const raw = typeof conf === "string" ? conf : (conf?.label ?? key);
-    return String(raw)
-      .replace(/([a-z])([A-Z])/g, "$1 $2")
-      .replace(/\b\w/g, ch => ch.toUpperCase());
+    const label = typeof conf === "string" ? conf : conf?.label;
+    const raw = typeof label === "string" && label
+      ? (game.i18n?.localize?.(label) ?? label)
+      : String(key ?? "").replace(/([a-z])([A-Z])/g, "$1 $2");
+    // dnd5e's English labels are lower case ("very rare"), so capitalise each
+    // word — but only after whitespace. \b\w treats an accented letter as a
+    // word boundary, which printed "LéGendaire" for French players.
+    return raw.replace(/(^|\s)(\p{L})/gu, (_, gap, ch) => gap + ch.toUpperCase());
   },
 
   rarityOf(source) {
@@ -297,6 +301,38 @@ export const DND5E_ADAPTER = {
 
   usesMaxOf: entry => useDetail(entry).max,
 
+  /**
+   * Whether players must not learn what this item really is.
+   *
+   * dnd5e already swaps an unidentified item's *name* for its disguise, but the
+   * description and rarity are left to whoever displays them.
+   */
+  conceals: source => get(source, "system.identified") === false,
+
+  /** Rules text as players may see it: the disguise text for an unidentified item. */
+  publicDescriptionOf(source) {
+    if (get(source, "system.identified") === false) return text(get(source, "system.unidentified.description"));
+    const value = get(source, "system.description.value");
+    return typeof value === "string" ? value : "";
+  },
+
+  /**
+   * The documents to create for a prize.
+   *
+   * A container carries its contents as separate items linked by
+   * `system.container`, so copying the container alone granted an empty
+   * Explorer's Pack. dnd5e's own helper walks the contents, and via
+   * fromCompendium it also records where the item came from.
+   */
+  async grantData(source) {
+    const cls = source?.constructor;
+    if (typeof cls?.createWithContents === "function") {
+      const data = await cls.createWithContents([source]);
+      if (Array.isArray(data) && data.length) return data;
+    }
+    return GENERIC_ADAPTER.grantData(source);
+  },
+
   /** `system.type.value` since 3.0; each item type had its own field before. */
   subtypeOf: entry => text(get(entry, "system.type.value"))
     || text(get(entry, "system.consumableType"))
@@ -305,7 +341,10 @@ export const DND5E_ADAPTER = {
     || null,
 
   parseCurrency(name) {
-    const match = /^\s*(\d[\d,]*)\s*(gp|gold|sp|silver|cp|copper|ep|electrum|pp|platinum)\b/i.exec(name ?? "");
+    // Anchored at both ends: "10 Silver Mirrors" and "100 gp gem" are prizes,
+    // not purses, and must go to the GM to hand over.
+    const match = /^\s*(\d[\d,]*)\s*(gp|gold|sp|silver|cp|copper|ep|electrum|pp|platinum)(?:\s+(?:pieces?|coins?))?\s*$/i
+      .exec(name ?? "");
     if (!match) return null;
     const denom = CURRENCY_WORDS[match[2].toLowerCase()];
     const amount = Number(match[1].replace(/,/g, ""));

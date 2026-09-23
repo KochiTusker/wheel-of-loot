@@ -14,7 +14,12 @@ can tell a three-charge wand from a one-use scroll. Everything system-specific
 lives behind one small adapter file, so the module runs in any world.
 
 > **Requirements:** Foundry VTT **v14**, and
-> [socketlib](https://github.com/manuelVo/foundryvtt-socketlib).
+> [socketlib](https://github.com/manuelVo/foundryvtt-socketlib). Nothing else —
+> no other module is needed, including the D&D Beyond importer or midi-qol.
+> The D&D 5e features were checked against **dnd5e 5.3.3** and every item in
+> its own SRD compendiums (2014 and 2024 rules). Imported or homebrew items
+> work too; see [Troubleshooting](docs/TROUBLESHOOTING.md) for what a ⚠ on an
+> item's charges means.
 >
 > It should run on **v13** as well: every API it uses existed there, and nothing
 > in it is v14-only. That has never been tested on a real v13 world, though, so

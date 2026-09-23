@@ -31,7 +31,10 @@ const REGISTRY = new Map();
  * @property {(name: string) => {denom: string, amount: number}|null} parseCurrency
  * @property {(actor: Actor, payout: object) => Promise<boolean>} grantCurrency
  * @property {(actor: Actor) => boolean} isRewardable  May this actor receive a prize?
- * @property {(source: object) => string} descriptionOf  Raw description HTML.
+ * @property {(source: object) => string} descriptionOf  Raw description HTML, as the GM sees it.
+ * @property {(source: object) => string} publicDescriptionOf  Description players may see.
+ * @property {(source: object) => boolean} conceals  True when players must not learn what it is.
+ * @property {(source: Item) => Promise<object[]>} grantData  Documents to create for a prize.
  * @property {(source: object) => string} sourceOf   Book or publication an entry came from.
  * @property {(source: object) => string|null} priceOf     Display-ready price, or null.
  * @property {(source: object) => number|null} usesMaxOf   Charge capacity, or null.
@@ -151,7 +154,8 @@ export const GENERIC_ADAPTER = {
    * the name keeps table authoring to plain typing, with no flags to remember.
    */
   parseCurrency(name) {
-    const match = /^\s*(\d[\d,]*)\s*([a-z]{2,10})\b/i.exec(name ?? "");
+    // The whole name must be the payout: "3 Silver Mirrors" is a prize.
+    const match = /^\s*(\d[\d,]*)\s*([a-z]{2,10})(?:\s+(?:pieces?|coins?))?\s*$/i.exec(name ?? "");
     if (!match) return null;
     const denom = COIN_WORDS[match[2].toLowerCase()] ?? match[2].toLowerCase();
     const amount = Number(match[1].replace(/,/g, ""));
@@ -226,6 +230,25 @@ export const GENERIC_ADAPTER = {
       if (typeof value === "string" && value.trim()) return value;
     }
     return "";
+  },
+
+  /** No notion of identification, so players see what the GM sees. */
+  conceals: () => false,
+
+  publicDescriptionOf(source) {
+    return this.descriptionOf(source);
+  },
+
+  /**
+   * The documents to create on the winner for a prize. One, unless a system
+   * knows better (containers and their contents, say). The first is the prize.
+   */
+  async grantData(source) {
+    const data = source.toObject();
+    delete data._id;
+    // So the granted copy still knows which compendium entry it came from.
+    if (source.pack) foundry.utils.setProperty(data, "_stats.compendiumSource", source.uuid);
+    return [data];
   }
 };
 

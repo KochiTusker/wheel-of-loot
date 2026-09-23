@@ -114,11 +114,9 @@ export async function openLauncher({present, getCredits, grant, createTable, bui
     return;
   }
 
+  // No players yet is no reason to lock the GM out: they spin for free, and
+  // can build and rehearse a wheel before anybody joins.
   const users = candidateUsers();
-  if (!users.length) {
-    ui.notifications.warn(t("Notify.NoPlayers"));
-    return;
-  }
 
   const esc = foundry.utils.escapeHTML;
   const ledger = getCredits();
@@ -146,7 +144,7 @@ export async function openLauncher({present, getCredits, grant, createTable, bui
       </div>
       <h4 class="wol-alloc-head">${t("Launcher.Spins")}</h4>
       <p class="hint">${t("Launcher.SpinsHint")}</p>
-      <ol class="wol-alloc">${rows}</ol>
+      <ol class="wol-alloc">${rows || `<li class="wol-alloc-row"><em>${t("Notify.NoPlayers")}</em></li>`}</ol>
       <p class="notes">${t("Launcher.Notes")}</p>
     </div>`;
 

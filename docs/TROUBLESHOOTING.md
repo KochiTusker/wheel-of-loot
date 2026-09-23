@@ -15,8 +15,9 @@ does not know it exists yet. Restart Foundry, not the world.
 Two filters are on by default because they are right most of the time, and both
 of them will hide an ordinary weapon:
 
-- **Single-use only** hides anything with more than one charge. A wand, a staff,
-  a sword — all hidden.
+- **Single-use only** hides anything that is not spent in one use: charged
+  items, items that recharge, and permanent gear. A wand, a staff, a sword —
+  all hidden.
 - In D&D 5e the type filter starts on **consumable**, because that is what most
   loot wheels are made of.
 
@@ -26,6 +27,20 @@ clear every filter at once.
 If it is still missing, check **Refresh items** — the item list is built once and
 cached. Items you create while the builder is open are folded in automatically,
 but a compendium you have only just installed needs the refresh.
+
+## An item's charges show a ⚠, or it says "∞"
+
+The tag beside each item says how it is used up, read from the item itself:
+**1×** single use, **9×** charges that do not come back, **7/dawn** charges that
+do, **∞** never used up.
+
+A **⚠** in amber italics (for example **⚠3/dawn**) means the item's *data*
+records no charges, but its description states some. Some importers write items
+this way — the D&D Beyond importer does for Pipes of Haunting, Luck Blades and
+many others. The wheel reads the count from the text so you can see it, but the
+character sheet will not track those charges for whoever wins it. Open the
+item's details (the chevron) and it will name another copy in your world that
+does track them, when there is one.
 
 ## Everything is listed eleven times
 

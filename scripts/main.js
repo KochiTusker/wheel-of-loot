@@ -124,7 +124,7 @@ export async function present({table, allocations} = {}) {
 
   // Every wedge must point at something that still exists, or the wheel can
   // land on a prize that cannot be handed over.
-  const {missing} = await auditTable(doc);
+  const {missing, notItems} = await auditTable(doc);
   if (missing.length) {
     ui.notifications.error(t("Notify.EntriesMissing", {
       n: missing.length,
@@ -132,8 +132,13 @@ export async function present({table, allocations} = {}) {
     }));
     return null;
   }
-
-  if (allocations) await setSpins.call({socketdata: {userId: game.user.id}}, allocations);
+  if (notItems.length) {
+    ui.notifications.error(t("Notify.EntriesNotItems", {
+      n: notItems.length,
+      names: notItems.slice(0, 3).join(", ") + (notItems.length > 3 ? "…" : "")
+    }));
+    return null;
+  }
 
   const {entries, slots} = await buildEntries(doc.results);
 
@@ -143,6 +148,10 @@ export async function present({table, allocations} = {}) {
     ui.notifications.warn(t("Notify.WheelExhausted", {name: doc.name}));
     return null;
   }
+
+  // Only now: handing out spins for a wheel that then refuses to open left
+  // players holding credit for nothing.
+  if (allocations) await setSpins.call({socketdata: {userId: game.user.id}}, allocations);
   const seed = Math.floor(Math.random() * 0xFFFFFFFF);
   const layout = disperseSlots(entries, slots, seed);
 

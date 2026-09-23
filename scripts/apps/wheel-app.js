@@ -818,8 +818,11 @@ export class LootWheel {
    * target again before anything is created.
    */
   async #onGift(button) {
+    // The same test the GM applies, so nobody is offered a target that will
+    // then be refused.
+    const adapter = systemAdapter();
     const targets = game.users
-      .filter(u => !u.isGM && u.character && u.character.id !== this.actorId)
+      .filter(u => !u.isGM && u.character && u.character.id !== this.actorId && adapter.isRewardable(u.character))
       .map(u => ({id: u.character.id, label: `${u.character.name} (${u.name})`}))
       .sort((a, b) => a.label.localeCompare(b.label));
 
@@ -878,7 +881,13 @@ export class LootWheel {
     const verb = !accepted ? t("Wheel.Declining") : (giftActorId ? t("Wheel.Gifting") : t("Wheel.Claiming"));
     this.root.querySelector(".wol-reveal-actions").innerHTML = `<p class="wol-wait">${verb}</p>`;
     try {
-      await this.config.onResolve(this.config.sessionId, accepted, giftActorId);
+      const outcome = await this.config.onResolve(this.config.sessionId, accepted, giftActorId);
+      // The GM said no (a gift target, or nowhere to put it) and told us why.
+      // The spin is still ours, so put the choices back.
+      if (outcome?.retry && this.state === "resolving") {
+        this.state = "landed";
+        this.#renderRevealActions();
+      }
     } catch (err) {
       console.error("Wheel of Loot | resolve failed", err);
       ui.notifications.error(t("Notify.ResolveFailed"));

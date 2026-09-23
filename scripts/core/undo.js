@@ -102,7 +102,8 @@ export async function undoLastGrant() {
       // unreturnable. The name is still accepted for items granted before the
       // uuid was stamped, so an older win is not stranded.
       if (!isOurGrant(item, record)) return {ok: false, reason: "notOurs"};
-      await item.delete();
+      // A container was granted with its contents; take them back too.
+      await item.delete({deleteContents: true});
     } else if (record.coins) {
       const adapter = systemAdapter();
       const path = `system.currency.${record.coins.denom}`;

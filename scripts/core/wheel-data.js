@@ -73,14 +73,22 @@ export function plainText(html, limit = 420) {
  *
  * @param {string} html
  * @param {number} [limit]
+ * @param {object} [options]
+ * @param {Document} [options.relativeTo]  The document the text belongs to.
  * @returns {Promise<string>}
  */
-export async function richText(html, limit = 420) {
+export async function richText(html, limit = 420, {relativeTo = null} = {}) {
   if (!html) return "";
   let enriched = html;
   try {
     const editor = CONFIG.ux?.TextEditor ?? foundry.applications.ux.TextEditor.implementation;
-    enriched = await editor.enrichHTML(html, {secrets: false});
+    // dnd5e's [[/save]] and [[/damage]] read their numbers off the item's own
+    // activities, so without the item they are left as raw brackets.
+    enriched = await editor.enrichHTML(html, {
+      secrets: false,
+      relativeTo: relativeTo ?? undefined,
+      rollData: relativeTo?.getRollData?.() ?? {}
+    });
   } catch (err) {
     console.warn("Wheel of Loot | could not enrich description, falling back to raw text", err);
   }
@@ -238,14 +246,19 @@ export async function buildEntries(results) {
     // A custom prize has no document to ask, so it carries its own rarity on a
     // flag. Without it a homebrew artifact would take the same neutral grey as a
     // torch, which is the one thing a rarity colour exists to prevent.
-    const rarity = doc ? adapter.rarityOf(doc) : (result.getFlag?.(MODULE_ID, "rarity") || null);
-    const description = doc ? adapter.descriptionOf(doc) : result.description;
+    // An unidentified item keeps its secret: no rarity ink, no real rules text.
+    // dnd5e already gives it its disguise name.
+    const hidden = !!doc && adapter.conceals(doc);
+    const rarity = doc
+      ? (hidden ? null : adapter.rarityOf(doc))
+      : (result.getFlag?.(MODULE_ID, "rarity") || null);
+    const description = doc ? adapter.publicDescriptionOf(doc) : result.description;
 
     entries.push({
       uuid: doc ? result.documentUuid : null,
       name: doc?.name || result.name || game.i18n.localize("WHEELOFLOOT.Unknown"),
       img: doc?.img || result.img || "icons/svg/item-bag.svg",
-      description: await richText(description),
+      description: await richText(description, undefined, {relativeTo: doc}),
       rarity,
       isCoin: !!coin,
       count,
@@ -355,6 +368,11 @@ export function validateTable(table) {
 
   // A formula that can roll outside the ranges would land on nothing.
   const die = /^\s*1?d(\d+)\s*$/i.exec(table.formula ?? "");
+  // 2d6 and friends weight the middle and never roll 1, which a wheel of equal
+  // slices cannot show. Say that, rather than reporting slot 1 as a gap.
+  if (!die && /\d*d\d+/i.test(table.formula ?? "")) {
+    return [{code: "FormulaDice", data: {formula: table.formula}}];
+  }
   if (die) {
     const faces = Number(die[1]);
     if (faces > slots) faults.push({code: "FormulaHigh", data: {faces, slots}});
@@ -376,11 +394,12 @@ export function describeFault(fault) {
  * hands over nothing. Async because it has to actually resolve them.
  *
  * @param {RollTable} table
- * @returns {Promise<{missing: string[], text: string[]}>}
+ * @returns {Promise<{missing: string[], notItems: string[], text: string[]}>}
  */
 export async function auditTable(table) {
   const adapter = systemAdapter();
   const missing = [];
+  const notItems = [];
   const text = [];
   for (const result of table.results) {
     if (result.type === CONST.TABLE_RESULT_TYPES.DOCUMENT) {
@@ -389,10 +408,13 @@ export async function auditTable(table) {
         doc = result.documentUuid ? await fromUuid(result.documentUuid) : null;
       } catch { doc = null; }
       if (!doc) missing.push(result.name || result.documentUuid || "(unnamed)");
+      // An Actor, JournalEntry or sub-table resolves fine and then cannot be
+      // put in anybody's inventory.
+      else if (doc.documentName !== "Item") notItems.push(result.name || doc.name);
     } else if (!adapter.parseCurrency(result.name)) {
       // Plain text that is not coin cannot be granted automatically.
       text.push(result.name);
     }
   }
-  return {missing, text};
+  return {missing, notItems, text};
 }

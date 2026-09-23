@@ -1472,7 +1472,7 @@ export class WheelBuilder extends ApplicationV2 {
           ? `<p class="warn"><i class="fa-solid fa-triangle-exclamation"></i>
           ${t(profile === "recharge" ? "Builder.WarnRecharge" : "Builder.WarnCharges")}</p>` : ""}
         <p class="desc">${foundry.utils.escapeHTML(
-          await richText(adapter.descriptionOf(doc), 1200) || t("Builder.NoDescription"))}</p>
+          await richText(adapter.descriptionOf(doc), 1200, {relativeTo: doc}) || t("Builder.NoDescription"))}</p>
       </div>`;
   }
 

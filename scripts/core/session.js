@@ -82,7 +82,11 @@ export async function registerSession(payload) {
 export async function cancelWheel(sessionId) {
   const caller = this?.socketdata?.userId ?? game.user.id;
   if (!game.users.get(caller)?.isGM) return;
+  const session = sessions.get(sessionId);
   sessions.delete(sessionId);
+  // Closed after a paid spin landed but before it was kept or refused: the
+  // player got nothing for it, so the credit goes back.
+  if (session?.phase === "spinning" && session.currentSpinPaid) await refundSpin(session.currentSpinnerId);
   await socket().executeForEveryone("closeWheel", sessionId);
 }
 
@@ -142,6 +146,7 @@ export async function requestSpin(sessionId) {
   session.currentActorName = actor?.name ?? user.name;
 
   if (!isGM) await debit(caller);
+  session.currentSpinPaid = !isGM;
 
   // Everything from here has already taken the player's credit, so any failure
   // has to give it back and return the wheel to a spinnable state. Leaving the
@@ -289,13 +294,13 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
     if (!(session.wheel?.rules?.allowGift ?? true)) {
       console.warn("Wheel of Loot | gift refused; this wheel does not allow it");
       await tell(caller, t("Notify.GiftNotAllowed"));
-      return;
+      return {retry: true};
     }
     const target = game.actors.get(giftActorId);
     if (!target || !adapter.isRewardable(target)) {
       console.warn(`Wheel of Loot | rejected gift to ${giftActorId}`);
       await tell(caller, t("Notify.BadGiftTarget"));
-      return;
+      return {retry: true};
     }
     actor = target;
     gifted = target.name;
@@ -303,7 +308,8 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
 
   if (accepted && !actor) {
     await tell(caller, t("Notify.NowhereToPutIt"));
-    return;
+    // Still their spin: they can gift it or refuse it instead.
+    return {retry: true};
   }
 
   session.phase = "resolving";
@@ -321,14 +327,17 @@ export async function resolveWheel(sessionId, accepted, giftActorId = null) {
       if (entry.uuid) {
         const source = await fromUuid(entry.uuid);
         if (!source) throw new Error(`could not resolve ${entry.uuid}`);
-        const data = source.toObject();
-        delete data._id;
-        // Provenance, so a later audit can tell wheel loot from an import — and
-        // so undo can prove this is the document it created. The name is the
-        // label a human reads; the uuid is what survives a rename.
-        foundry.utils.setProperty(data, `flags.${MODULE_ID}.wonFrom`, session.tableName);
-        foundry.utils.setProperty(data, `flags.${MODULE_ID}.wonFromUuid`, session.tableUuid ?? null);
-        [granted] = await actor.createEmbeddedDocuments("Item", [data]);
+        // Through the adapter: a dnd5e container comes with its contents.
+        const data = await adapter.grantData(source);
+        for (const item of data) {
+          // Provenance, so a later audit can tell wheel loot from an import —
+          // and so undo can prove this is the document it created. The name is
+          // the label a human reads; the uuid is what survives a rename.
+          foundry.utils.setProperty(item, `flags.${MODULE_ID}.wonFrom`, session.tableName);
+          foundry.utils.setProperty(item, `flags.${MODULE_ID}.wonFromUuid`, session.tableUuid ?? null);
+        }
+        // keepId: contents point at their container by the ids just assigned.
+        [granted] = await actor.createEmbeddedDocuments("Item", data, {keepId: true});
       } else {
         // A text wedge: the only thing we know how to pay out is coin, and only
         // if the system can tell us where a purse lives.
